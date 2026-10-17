@@ -3140,3 +3140,10 @@ class SelfRegistrationTests(TournamentFixtureMixin, TestCase):
         response = self.client.post("/gestion/codigo/autoinscripcion/activar/")
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.url.startswith("/cuentas/login/"))
+
+    def test_panel_shows_pairs_before_invite_and_add(self):
+        """Lo primero que se ve son las parejas anotadas; invitar/agregar quedan abajo."""
+        self.client.force_login(self.user)
+        html = self.client.get("/gestion/codigo/parejas/").content.decode()
+        self.assertLess(html.index("Parejas inscriptas"), html.index("Invitar pareja con código"))
+        self.assertLess(html.index("Parejas inscriptas"), html.index("Agregar pareja"))

@@ -11,12 +11,73 @@
   </p>
 </section>
 
+<section class="panel-section">
+  {% if pending_rows %}
+    <h2>Solicitudes pendientes ({{ pending_rows|length }})</h2>
+    <p class="muted">
+      Se anotaron solas desde la página pública. Hasta que las confirmes no entran al torneo:
+      no se sortean zonas ni se generan partidos con ellas.
+    </p>
+    <div class="card-list">
+      {% for row in pending_rows %}
+        <article class="padel-card team-card">
+          <h3>{{ row.team }}</h3>
+          <p>
+            <span class="status-pill status-pill--pending">Pendiente</span>
+            {% if row.registration.source == "public" %}<span class="status-pill status-pill--running">Autoinscripta</span>{% endif %}
+          </p>
+          <p class="muted">
+            Anotada el {{ row.registration.created_at|date:"d/m/Y H:i" }}
+            {% if row.phones %} · Tel: {{ row.phones|join:" · " }}{% endif %}
+          </p>
+          <div class="form-actions">
+            <form method="post" action="{% url 'panel_registration_action' tournament.slug row.registration.pk 'confirmar' %}">
+              {% csrf_token %}
+              <button class="btn btn--primary btn--sm" type="submit">Confirmar</button>
+            </form>
+            <form method="post" action="{% url 'panel_registration_action' tournament.slug row.registration.pk 'rechazar' %}"
+                  data-confirm="¿Rechazar esta solicitud? La pareja no entra al torneo.">
+              {% csrf_token %}
+              <button class="btn btn--danger btn--sm" type="submit">Rechazar</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <h2>Parejas inscriptas</h2>
+  {% if team_rows %}
+    <div class="card-list">
+      {% for row in team_rows %}
+        <article class="padel-card team-card">
+          <h3>{{ row.team }}</h3>
+          <p>
+            <span class="status-pill {% if row.registration.status == 'paid' %}status-pill--running{% else %}status-pill--done{% endif %}">{{ row.registration.get_status_display }}</span>
+            {% if row.registration.source == "public" %}<span class="status-pill status-pill--pending">Autoinscripta</span>{% endif %}
+          </p>
+          <p class="muted">
+            {% if row.zone %}Zona {{ row.zone.name }}{% else %}Sin zona asignada{% endif %}
+            · {{ row.matches }} partidos
+          </p>
+          <form method="post" action="{% url 'panel_team_delete' tournament.slug row.team.pk %}"
+                data-confirm="¿Dar de baja esta pareja del torneo? Los jugadores volverán a estar disponibles.">
+            {% csrf_token %}
+            <button class="btn btn--danger btn--sm" type="submit">Eliminar pareja</button>
+          </form>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="alert alert--info">Todavía no hay parejas inscriptas en este torneo.</p>
+  {% endif %}
+</section>
+
 <section class="padel-card">
-  <h2>Autoinscripción con código</h2>
+  <h2>Invitar pareja con código</h2>
   {% if self_registration_enabled %}
     <p class="muted">
       Compartí el código con los jugadores: desde la página pública del torneo pueden anotar su pareja solos.
-      Las parejas anotadas quedan <strong>pendientes</strong> hasta que las confirmes acá abajo.
+      Las parejas anotadas quedan <strong>pendientes</strong> hasta que las confirmes en «Solicitudes pendientes».
     </p>
     <p class="signup-code-row">
       <span class="registration-code" id="registration-code">{{ registration_code }}</span>
@@ -124,67 +185,6 @@
       No queda ningún jugador libre en este torneo, pero podés sumar jugadores nuevos escribiendo sus nombres.
     {% endif %}
   </p>
-</section>
-
-<section class="panel-section">
-  {% if pending_rows %}
-    <h2>Solicitudes pendientes ({{ pending_rows|length }})</h2>
-    <p class="muted">
-      Se anotaron solas desde la página pública. Hasta que las confirmes no entran al torneo:
-      no se sortean zonas ni se generan partidos con ellas.
-    </p>
-    <div class="card-list">
-      {% for row in pending_rows %}
-        <article class="padel-card team-card">
-          <h3>{{ row.team }}</h3>
-          <p>
-            <span class="status-pill status-pill--pending">Pendiente</span>
-            {% if row.registration.source == "public" %}<span class="status-pill status-pill--running">Autoinscripta</span>{% endif %}
-          </p>
-          <p class="muted">
-            Anotada el {{ row.registration.created_at|date:"d/m/Y H:i" }}
-            {% if row.phones %} · Tel: {{ row.phones|join:" · " }}{% endif %}
-          </p>
-          <div class="form-actions">
-            <form method="post" action="{% url 'panel_registration_action' tournament.slug row.registration.pk 'confirmar' %}">
-              {% csrf_token %}
-              <button class="btn btn--primary btn--sm" type="submit">Confirmar</button>
-            </form>
-            <form method="post" action="{% url 'panel_registration_action' tournament.slug row.registration.pk 'rechazar' %}"
-                  data-confirm="¿Rechazar esta solicitud? La pareja no entra al torneo.">
-              {% csrf_token %}
-              <button class="btn btn--danger btn--sm" type="submit">Rechazar</button>
-            </form>
-          </div>
-        </article>
-      {% endfor %}
-    </div>
-  {% endif %}
-  <h2>Parejas inscriptas</h2>
-  {% if team_rows %}
-    <div class="card-list">
-      {% for row in team_rows %}
-        <article class="padel-card team-card">
-          <h3>{{ row.team }}</h3>
-          <p>
-            <span class="status-pill {% if row.registration.status == 'paid' %}status-pill--running{% else %}status-pill--done{% endif %}">{{ row.registration.get_status_display }}</span>
-            {% if row.registration.source == "public" %}<span class="status-pill status-pill--pending">Autoinscripta</span>{% endif %}
-          </p>
-          <p class="muted">
-            {% if row.zone %}Zona {{ row.zone.name }}{% else %}Sin zona asignada{% endif %}
-            · {{ row.matches }} partidos
-          </p>
-          <form method="post" action="{% url 'panel_team_delete' tournament.slug row.team.pk %}"
-                data-confirm="¿Dar de baja esta pareja del torneo? Los jugadores volverán a estar disponibles.">
-            {% csrf_token %}
-            <button class="btn btn--danger btn--sm" type="submit">Eliminar pareja</button>
-          </form>
-        </article>
-      {% endfor %}
-    </div>
-  {% else %}
-    <p class="alert alert--info">Todavía no hay parejas inscriptas en este torneo.</p>
-  {% endif %}
 </section>
 {% endblock %}
 
