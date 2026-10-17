@@ -330,11 +330,16 @@ def panel_teams(request, slug):
             pending_rows.append(row)
         else:
             team_rows.append(row)
-    signup_url = request.build_absolute_uri(
+    base_signup_url = request.build_absolute_uri(
         reverse("public_tournament_signup", kwargs={"slug": tournament.slug})
     )
-    whatsapp_link_url = "https://wa.me/?text=" + quote(signup_url)
-    whatsapp_hint_url = "https://wa.me/?text=" + quote("Copiá el siguiente código y anotá tu pareja 👇")
+    signup_url = base_signup_url
+    if tournament.registration_code:
+        # El link lleva el código adentro: al abrirlo el formulario ya viene completo.
+        signup_url = f"{base_signup_url}?codigo={tournament.registration_code}"
+    whatsapp_share_url = "https://wa.me/?text=" + quote(
+        f"Anotá tu pareja al torneo «{tournament.name}» 🎾\n{signup_url}"
+    )
     whatsapp_code_url = "https://wa.me/?text=" + quote(tournament.registration_code or "")
     context = _panel_context(
         request,
@@ -345,8 +350,7 @@ def panel_teams(request, slug):
         self_registration_enabled=tournament.self_registration_enabled,
         registration_code=tournament.registration_code,
         signup_url=signup_url,
-        whatsapp_link_url=whatsapp_link_url,
-        whatsapp_hint_url=whatsapp_hint_url,
+        whatsapp_share_url=whatsapp_share_url,
         whatsapp_code_url=whatsapp_code_url,
         available_players=players_service.available_players(tournament),
         used_players_count=len(players_service.player_ids_in_tournament(tournament)),

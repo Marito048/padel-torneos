@@ -3113,13 +3113,14 @@ class SelfRegistrationTests(TournamentFixtureMixin, TestCase):
         self.tournament.refresh_from_db()
         self.assertNotEqual(self.tournament.registration_code, old_code)
         self.assertContains(response, self.tournament.registration_code)
-        # Los mensajes de WhatsApp van separados: link solo, indicación y código solo.
-        self.assertContains(response, "1. Enviar link")
-        self.assertContains(response, "2. Enviar indicación")
-        self.assertContains(response, "3. Enviar código")
-        self.assertContains(
-            response, "https://wa.me/?text=" + quote("http://testserver/torneos/codigo/anotarse/")
+        # Un solo mensaje con el link (que ya lleva el código adentro) y otro extra para mandar sólo el código.
+        share_message = (
+            "Anotá tu pareja al torneo «Torneo codigo» 🎾\n"
+            f"http://testserver/torneos/codigo/anotarse/?codigo={self.tournament.registration_code}"
         )
+        self.assertContains(response, "Compartir por WhatsApp")
+        self.assertContains(response, "Enviar solo el código")
+        self.assertContains(response, "https://wa.me/?text=" + quote(share_message))
         self.assertContains(
             response, "https://wa.me/?text=" + quote(self.tournament.registration_code)
         )

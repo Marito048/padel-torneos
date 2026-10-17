@@ -21,18 +21,16 @@
     <p class="signup-code-row">
       <span class="registration-code" id="registration-code">{{ registration_code }}</span>
       <button class="btn btn--secondary btn--sm" type="button" data-copy="{{ registration_code }}">Copiar código</button>
+      <a class="btn btn--secondary btn--sm" href="{{ whatsapp_code_url }}" target="_blank" rel="noopener">Enviar solo el código</a>
     </p>
-    <p class="muted">Compartir por WhatsApp (en 3 mensajes, tocá uno por uno):</p>
-    <div class="form-actions">
-      <a class="btn btn--secondary btn--sm" href="{{ whatsapp_link_url }}" target="_blank" rel="noopener">1. Enviar link</a>
-      <a class="btn btn--secondary btn--sm" href="{{ whatsapp_hint_url }}" target="_blank" rel="noopener">2. Enviar indicación</a>
-      <a class="btn btn--secondary btn--sm" href="{{ whatsapp_code_url }}" target="_blank" rel="noopener">3. Enviar código</a>
-    </div>
     <p class="muted">
-      Link directo para anotarse:
+      Link para anotarse (lleva el código adentro: al abrirlo, el formulario ya viene completo):
       <span class="signup-url">{{ signup_url }}</span>
       <button class="btn btn--secondary btn--sm" type="button" data-copy="{{ signup_url }}">Copiar link</button>
     </p>
+    <div class="form-actions">
+      <a class="btn btn--primary" href="{{ whatsapp_share_url }}" target="_blank" rel="noopener">Compartir por WhatsApp</a>
+    </div>
     <div class="form-actions">
       <form method="post" action="{% url 'panel_self_registration' tournament.slug 'regenerar' %}"
             data-confirm="¿Generar un código nuevo? El código anterior deja de funcionar.">
