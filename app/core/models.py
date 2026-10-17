@@ -24,21 +24,42 @@ def _valid_set_score(games_a: int, games_b: int) -> bool:
     return (high == 6 and low <= 4) or (high == 7 and low in (5, 6))
 
 
+def classify_score(score: str) -> tuple[list[tuple[int, int]], list[tuple[int, int]], list[str]]:
+    """Clasifica los tokens de un marcador en (sets, supers, desconocidos).
+
+    El super tie-break se acepta entre corchetes (``[11-9]``) o suelto, al final
+    (``11-9``): un token que no es un set válido y cuyo ganador llega a 8 games
+    o más se interpreta como super tie-break.
+    """
+    sets: list[tuple[int, int]] = []
+    supers: list[tuple[int, int]] = []
+    unknown: list[str] = []
+    for token in (score or "").split():
+        bracket_match = re.fullmatch(r"\[(\d+)-(\d+)\]", token)
+        if bracket_match:
+            supers.append((int(bracket_match.group(1)), int(bracket_match.group(2))))
+            continue
+        plain_match = re.fullmatch(r"(\d+)-(\d+)", token)
+        if not plain_match:
+            unknown.append(token)
+            continue
+        games_a, games_b = int(plain_match.group(1)), int(plain_match.group(2))
+        if _valid_set_score(games_a, games_b) or max(games_a, games_b) < 8:
+            sets.append((games_a, games_b))
+        else:
+            supers.append((games_a, games_b))
+    return sets, supers, unknown
+
+
 def implied_winner_id(score: str, team1_id, team2_id) -> int | None:
     """Ganador que sugiere un marcador leído con team1 primero (None si no lo define)."""
-    base = re.sub(r"\[[^\]]*\]", "", score or "")
-    sets_t1 = sets_t2 = 0
-    for games_a, games_b in re.findall(r"(\d+)-(\d+)", base):
-        games_a, games_b = int(games_a), int(games_b)
-        if games_a > games_b:
-            sets_t1 += 1
-        elif games_b > games_a:
-            sets_t2 += 1
+    sets, supers, _ = classify_score(score)
+    sets_t1 = sum(a > b for a, b in sets)
+    sets_t2 = sum(b > a for a, b in sets)
     if sets_t1 != sets_t2:
         return team1_id if sets_t1 > sets_t2 else team2_id
-    super_match = re.search(r"\[(\d+)-(\d+)\]", score or "")
-    if super_match and int(super_match.group(1)) != int(super_match.group(2)):
-        return team1_id if int(super_match.group(1)) > int(super_match.group(2)) else team2_id
+    if supers and supers[0][0] != supers[0][1]:
+        return team1_id if supers[0][0] > supers[0][1] else team2_id
     return None
 
 
@@ -559,7 +580,7 @@ class Match(models.Model):
         "Resultado",
         max_length=200,
         blank=True,
-        help_text='Ej: "6-4 4-6 [11-9]" (super tie-break a 11 entre corchetes)',
+        help_text='Ej: "6-4 4-6 11-9" (super tie-break a 11, con o sin corchetes)',
     )
     decided_by_super = models.BooleanField("Decidido por super tie-break", default=False)
     scheduled_at = models.DateTimeField("Programado", null=True, blank=True)
@@ -741,27 +762,24 @@ class Match(models.Model):
         if not isinstance(best_of_sets, int) or best_of_sets < 1:
             raise ValidationError("Cantidad de sets inválida para el torneo.")
 
-        import re
+        parsed_sets, super_scores, unknown_tokens = classify_score(score)
 
-        tokens = score.split()
-        set_tokens = [token for token in tokens if not token.startswith("[")]
-        super_tokens = [token for token in tokens if token.startswith("[")]
+        if unknown_tokens:
+            if any(token.startswith("[") for token in unknown_tokens):
+                raise ValidationError("Super tie-break inválido; usá por ejemplo 11-9.")
+            raise ValidationError("Formato de set inválido. Usá por ejemplo 6-4.")
 
         minimum_sets = best_of_sets // 2 + 1
-        if not minimum_sets <= len(set_tokens) <= best_of_sets:
+        if not minimum_sets <= len(parsed_sets) <= best_of_sets:
             raise ValidationError(
                 "La cantidad de sets jugados no es válida para un torneo "
                 f"al mejor de {best_of_sets} sets."
             )
-        if len(super_tokens) > 1:
+        if len(super_scores) > 1:
             raise ValidationError("El super tie-break se indica una sola vez.")
 
         sets = []
-        for token in set_tokens:
-            set_match = re.fullmatch(r"(\d+)-(\d+)", token)
-            if not set_match:
-                raise ValidationError("Formato de set inválido. Usá por ejemplo 6-4.")
-            games_a, games_b = int(set_match.group(1)), int(set_match.group(2))
+        for games_a, games_b in parsed_sets:
             if games_a == games_b:
                 raise ValidationError("Un set no puede terminar empatado.")
             if not _valid_set_score(games_a, games_b):
@@ -774,11 +792,8 @@ class Match(models.Model):
         team2_sets = sum(b > a for a, b in sets)
 
         super_tiebreak = None
-        if super_tokens:
-            super_match = re.fullmatch(r"\[(\d+)-(\d+)\]", super_tokens[0])
-            if not super_match:
-                raise ValidationError("Super tie-break inválido; usá por ejemplo [11-9].")
-            super_tiebreak = (int(super_match.group(1)), int(super_match.group(2)))
+        if super_scores:
+            super_tiebreak = super_scores[0]
             if super_tiebreak[0] == super_tiebreak[1]:
                 raise ValidationError("El super tie-break no puede terminar empatado.")
             hi, lo = max(super_tiebreak), min(super_tiebreak)
@@ -793,9 +808,9 @@ class Match(models.Model):
             if super_tiebreak is None:
                 if best_of_sets >= 3:
                     raise ValidationError(
-                        "Hay empate de sets: cargá el tercer set o el super tie-break (por ejemplo [11-9])."
+                        "Hay empate de sets: cargá el tercer set o el super tie-break (por ejemplo 11-9)."
                     )
-                raise ValidationError("Hay empate de sets; falta el super tie-break, por ejemplo [11-9].")
+                raise ValidationError("Hay empate de sets; falta el super tie-break, por ejemplo 11-9.")
             expected_winner_id = self.team1_id if super_tiebreak[0] > super_tiebreak[1] else self.team2_id
         elif team1_sets == team2_sets:
             raise ValidationError("El partido no tiene ganador de sets.")

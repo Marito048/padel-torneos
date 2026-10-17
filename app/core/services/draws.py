@@ -14,13 +14,12 @@ from __future__ import annotations
 import hashlib
 import json
 import random
-import re
 import secrets
 
 from django.db import transaction
 from django.db.models import Q
 
-from core.models import Match, Team, TieBreakAudit, Tournament, Zone, ZoneTeam
+from core.models import Match, Team, TieBreakAudit, Tournament, Zone, ZoneTeam, classify_score
 
 STAGE_ORDER = ["round_of_64", "round_of_32", "round_of_16", "quarter", "semi", "final"]
 NEXT_STAGE = {
@@ -41,10 +40,6 @@ STAGE_FOR_FIELD = {
 }
 MAX_FIELD_SIZE = 64
 
-_SUPER_RE = re.compile(r"\[(\d+)-(\d+)\]")
-_SET_RE = re.compile(r"(\d+)-(\d+)")
-
-
 class BracketError(ValueError):
     """Error de negocio de la llave eliminatoria."""
 
@@ -54,22 +49,22 @@ class BracketConflictError(BracketError):
 
 
 def parse_sets(score: str) -> tuple[int, int, int, int]:
-    """Devuelve (sets_ganados_t1, sets_ganados_t2, games_t1, games_t2)."""
-    sets_t1 = sets_t2 = games_t1 = games_t2 = 0
-    base = re.sub(r"\[[^\]]*\]", "", score or "")
-    for a, b in _SET_RE.findall(base):
-        a, b = int(a), int(b)
-        games_t1 += a
-        games_t2 += b
-        if a > b:
-            sets_t1 += 1
-        elif b > a:
-            sets_t2 += 1
+    """Devuelve (sets_ganados_t1, sets_ganados_t2, games_t1, games_t2).
+
+    El super tie-break (con o sin corchetes) no cuenta como set ni suma games.
+    """
+    sets, _, _ = classify_score(score)
+    sets_t1 = sum(a > b for a, b in sets)
+    sets_t2 = sum(b > a for a, b in sets)
+    games_t1 = sum(a for a, b in sets)
+    games_t2 = sum(b for a, b in sets)
     return sets_t1, sets_t2, games_t1, games_t2
 
 
 def has_super(score: str) -> bool:
-    return bool(_SUPER_RE.search(score or ""))
+    """Indica si el marcador incluye super tie-break (con o sin corchetes)."""
+    _, supers, _ = classify_score(score)
+    return bool(supers)
 
 
 def _is_match_decisive(match: Match) -> bool:

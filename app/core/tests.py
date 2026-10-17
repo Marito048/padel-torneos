@@ -162,6 +162,8 @@ class ParseSetsTests(TestCase):
     def test_super_tiebreak(self):
         self.assertEqual(parse_sets("6-4 4-6 [11-9]"), (1, 1, 10, 10))
         self.assertTrue(has_super("6-4 4-6 [11-9]"))
+        self.assertEqual(parse_sets("6-4 4-6 11-9"), (1, 1, 10, 10))
+        self.assertTrue(has_super("6-4 4-6 11-9"))
         self.assertFalse(has_super("6-4 6-3"))
 
     def test_zero_or_invalid_score(self):
@@ -187,6 +189,22 @@ class MatchScoreValidationTests(TournamentFixtureMixin, TestCase):
         self.match.save()
         self.assertEqual(self.match.winner_id, self.match.team1_id)
         self.assertTrue(self.match.decided_by_super)
+
+    def test_plain_super_tiebreak_accepted(self):
+        self.match.score = "6-4 4-6 11-9"
+        self.match.save()
+        self.assertEqual(self.match.winner_id, self.match.team1_id)
+        self.assertTrue(self.match.decided_by_super)
+
+    def test_plain_super_tiebreak_below_eleven_rejected(self):
+        with self.assertRaises(ValidationError):
+            self.match.score = "6-4 4-6 10-8"
+            self.match.save()
+
+    def test_plain_super_tiebreak_margin_rejected(self):
+        with self.assertRaises(ValidationError):
+            self.match.score = "6-4 4-6 11-10"
+            self.match.save()
 
     def test_impossible_set_score_rejected(self):
         with self.assertRaises(ValidationError):
@@ -239,6 +257,16 @@ class MatchScoreValidationTests(TournamentFixtureMixin, TestCase):
         zone = self.make_zones(tournament, [2])[0]
         match = zone_match(zone)
         match.score = "6-4 4-6 [11-9]"
+        match.save()
+        self.assertEqual(match.winner_id, match.team1_id)
+        self.assertTrue(match.decided_by_super)
+
+    def test_best_of_three_plain_super_accepted(self):
+        tournament = self.make_tournament(slug="bo3-super-plano", best_of_sets=3)
+        self.add_teams(tournament, 2)
+        zone = self.make_zones(tournament, [2])[0]
+        match = zone_match(zone)
+        match.score = "4-6 6-4 11-9"
         match.save()
         self.assertEqual(match.winner_id, match.team1_id)
         self.assertTrue(match.decided_by_super)
@@ -321,6 +349,13 @@ class WinnerReconciliationTests(TournamentFixtureMixin, TestCase):
         )
         self.assertEqual(updated.winner_id, self.teams[1].pk)
         self.assertEqual(updated.score, "3-6 6-3 [9-11]")
+
+    def test_plain_super_tiebreak_is_mirrored_too(self):
+        updated = register_match_result(
+            self.match, score="6-3 3-6 11-9", winner=self.teams[1]
+        )
+        self.assertEqual(updated.winner_id, self.teams[1].pk)
+        self.assertEqual(updated.score, "3-6 6-3 9-11")
 
     def test_automatic_winner_follows_corrected_score(self):
         register_match_result(self.match, score="6-3 6-2", winner=self.teams[0])

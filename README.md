@@ -35,7 +35,7 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
   las duplas configuradas, las que quedan vacías se descartan y las parejas con resultados
   cargados no se pueden mover.
 - **Resultados**: se validan sets/games según el reglamento (6-0 a 6-4, 7-5, 7-6; super
-  tie-break a 11 con diferencia de 2). El marcador se escribe siempre con la primera pareja;
+  tie-break a 11 con diferencia de 2, al final del marcador). El marcador se escribe siempre con la primera pareja;
   el ganador se deduce del marcador o se elige a mano (si se elige, el marcador se acomoda
   a esa pareja cuando vino espejado). Walkover exige ganador y motivo, sin sets ficticios.
   Queda registrado quién cargó cada resultado.
@@ -92,7 +92,7 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
   con super tie-break a 11 puntos (diferencia de 2; en torneos al mejor de 3 o más también
   vale jugar el set completo).
 - Formato `zonas_playoffs` (con llaves) o `round_robin` (sólo zonas).
-- Resultado como texto `"6-4 4-6 [11-9]"`; el ganador se deduce del marcador o se
+- Resultado como texto `"6-4 4-6 11-9"` (el super también vale entre corchetes, `[11-9]`); el ganador se deduce del marcador o se
   selecciona (si se selecciona, el marcador se acomoda a la pareja elegida).
 
 ## Inicio rápido (dev)
