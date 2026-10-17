@@ -1,21 +1,17 @@
-{% comment %}Fila de partido del fixture público (grupos y eliminatorias).{% endcomment %}
+{% comment %}Tarjeta de partido de la fase de grupos del fixture público.{% endcomment %}
 <article class="match-row">
-  {% if match.is_bye %}
-    <p class="match-row__bye"><strong>{{ match.team1|default:match.team2 }}</strong> <span class="muted">pasa de ronda (descanso)</span></p>
-  {% else %}
-    <div class="scoreboard">
-      <span class="team {% if match.team1_id and match.winner_id == match.team1_id %}winner{% endif %}">{{ match.team1|default:"Por definir" }}</span>
-      {% if match.score %}<span class="score">{{ match.score }}</span>
-      {% elif match.is_walkover %}<span class="score">W.O.</span>
-      {% else %}<span class="vs">vs</span>{% endif %}
-      <span class="team {% if match.team2_id and match.winner_id == match.team2_id %}winner{% endif %}">{{ match.team2|default:"Por definir" }}</span>
-    </div>
-    <div class="match-row__meta">
-      {% if match.scheduled_at %}<span class="chip">{{ match.scheduled_at|date:"D d/m H:i" }}</span>{% endif %}
-      {% if match.court %}<span class="chip">{{ match.court }}</span>{% endif %}
-      {% if match.is_walkover %}<span class="status-pill status-pill--done">Walkover</span>{% endif %}
-      {% if match.is_walkover and match.walkover_reason %}<span class="muted">{{ match.walkover_reason }}</span>{% endif %}
-      {% if not match.is_decided and not match.is_walkover %}<span class="status-pill status-pill--pending">Pendiente</span>{% endif %}
-    </div>
-  {% endif %}
+  <div class="scoreboard">
+    <span class="team {% if match.team1_id and match.winner_id == match.team1_id %}winner{% endif %}">{% if match.team1 %}{{ match.team1.display_name }}{% else %}Por definir{% endif %}</span>
+    {% if match.score %}<span class="score">{{ match.score }}</span>
+    {% elif match.is_walkover %}<span class="score">W.O.</span>
+    {% else %}<span class="vs">vs</span>{% endif %}
+    <span class="team {% if match.team2_id and match.winner_id == match.team2_id %}winner{% endif %}">{% if match.team2 %}{{ match.team2.display_name }}{% else %}Por definir{% endif %}</span>
+  </div>
+  <div class="match-row__meta">
+    {% if match.scheduled_at %}<span class="chip">{{ match.scheduled_at|date:"D d/m H:i" }}</span>{% endif %}
+    {% if match.court %}<span class="chip">{{ match.court }}</span>{% endif %}
+    {% if match.is_walkover %}<span class="status-pill status-pill--done">Walkover</span>{% endif %}
+    {% if match.is_walkover and match.walkover_reason %}<span class="muted">{{ match.walkover_reason }}</span>{% endif %}
+    {% if not match.is_decided and not match.is_walkover %}<span class="status-pill status-pill--pending">Pendiente</span>{% endif %}
+  </div>
 </article>

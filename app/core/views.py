@@ -1640,25 +1640,50 @@ def public_tournament_detail(request, slug):
     tournament = get_object_or_404(Tournament.objects.select_related("complex"), slug=slug)
     zones = []
     for zone in tournament.zones.all().order_by("order", "name"):
-        complete = draws.is_zone_complete(zone)
         zones.append(
             {
                 "zone": zone,
                 "matches": list(
                     zone.matches.filter(stage="group")
-                    .select_related("team1", "team2", "winner", "court")
+                    .select_related("team1__player1", "team1__player2", "team2__player1", "team2__player2", "winner", "court")
                     .order_by("slot", "id")
                 ),
-                "standings": draws.official_zone_standings(zone) if complete else draws.basic_zone_standings(zone),
-                "official": complete,
             }
         )
+
+    rounds = draws.bracket_rounds(tournament)
+
+    # Origen de cada clasificada («Zona A · 1°») para la primera ronda del cuadro.
+    zone_origin: dict[int, str] = {}
+    if rounds:
+        try:
+            detailed = draws.qualified_teams_detailed(tournament)
+        except draws.BracketError:
+            detailed = []
+        for item in detailed:
+            zone_origin[item["team"].id] = f"Zona {item['zone'].name} · {item['zone_position']}°"
+
+    tree = [
+        {
+            "label": round_data["label"],
+            "matches": [
+                {
+                    "match": match,
+                    "origin1": zone_origin.get(match.team1_id, "") if round_data["depth"] == 1 else "",
+                    "origin2": zone_origin.get(match.team2_id, "") if round_data["depth"] == 1 else "",
+                }
+                for match in round_data["matches"]
+            ],
+        }
+        for round_data in rounds
+    ]
+
     return render(
         request,
         "tournament_detail.html",
         {
             "tournament": tournament,
             "zones": zones,
-            "rounds": draws.bracket_rounds(tournament),
+            "tree": tree,
         },
     )

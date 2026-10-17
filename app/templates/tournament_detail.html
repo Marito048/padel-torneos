@@ -51,54 +51,47 @@
         <p class="alert alert--info">El torneo todavía no tiene zonas publicadas.</p>
       {% endif %}
 
-      {% if rounds %}
+      {% if tree %}
         <h3 class="fixture-phase">Eliminatorias</h3>
-        {% for round in rounds %}
-          <div class="fixture-zone">
-            <h4>{{ round.label }}</h4>
-            <div class="match-list">
-              {% for match in round.matches %}
-                {% include "_fixture_match_row.html" %}
-              {% endfor %}
-            </div>
+        <section class="bracket-scroll">
+          <div class="bracket-canvas" id="bracket-canvas">
+            <svg class="bracket-lines" id="bracket-lines" aria-hidden="true"></svg>
+            {% for round in tree %}
+              <div class="tree-round">
+                <h4 class="tree-round-title">{{ round.label }}</h4>
+                <div class="tree-round-body">
+                  {% for item in round.matches %}
+                    <div class="tree-match{% if item.match.is_bye %} tree-match--bye{% endif %}"
+                         id="tree-match-{{ item.match.pk }}"
+                         {% if item.match.next_match_id %}data-next="tree-match-{{ item.match.next_match_id }}"{% endif %}>
+                      {% if item.match.is_bye %}
+                        <p class="tree-note">Descanso (bye)</p>
+                        <p class="tree-team">{% if item.match.team1 %}{{ item.match.team1.display_name }}{% elif item.match.team2 %}{{ item.match.team2.display_name }}{% endif %}</p>
+                      {% else %}
+                        <p class="tree-team{% if item.match.team1_id and item.match.winner_id == item.match.team1_id %} is-winner{% endif %}">
+                          {% if item.match.team1 %}{{ item.match.team1.display_name }}{% if item.origin1 %} <span class="tree-origin">{{ item.origin1 }}</span>{% endif %}{% else %}<span class="muted">Por definir</span>{% endif %}
+                        </p>
+                        <p class="tree-team{% if item.match.team2_id and item.match.winner_id == item.match.team2_id %} is-winner{% endif %}">
+                          {% if item.match.team2 %}{{ item.match.team2.display_name }}{% if item.origin2 %} <span class="tree-origin">{{ item.origin2 }}</span>{% endif %}{% else %}<span class="muted">Por definir</span>{% endif %}
+                        </p>
+                        <p class="tree-meta">
+                          {% if item.match.score %}{{ item.match.score }}
+                          {% elif item.match.winner_id %}Ganó {{ item.match.winner.display_name }}
+                          {% elif item.match.team1_id and item.match.team2_id %}Pendiente
+                          {% else %}Esperando cruces{% endif %}
+                        </p>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endfor %}
           </div>
-        {% endfor %}
+        </section>
+        <p class="help">Deslizá el cuadro hacia los costados para ver todas las rondas. El ganador de cada cruce queda marcado con ✓.</p>
+        <script src="{% static 'core/bracket_tree.js' %}"></script>
       {% endif %}
     </section>
-
-    {% if zones %}
-      <section class="panel-section">
-        <h2>Posiciones</h2>
-        {% for row in zones %}
-          <section class="padel-card">
-            <header class="zone-card__header">
-              <h3>Zona {{ row.zone.name }}</h3>
-              {% if row.official %}<span class="status-pill status-pill--done">Oficial</span>
-              {% else %}<span class="status-pill status-pill--running">Provisional</span>{% endif %}
-            </header>
-            <table class="data-table">
-              <thead>
-                <tr><th>#</th><th>Dupla</th><th>PJ</th><th>PG</th><th>PP</th><th>Pts</th><th>Sets +/-</th><th>Games +/-</th></tr>
-              </thead>
-              <tbody>
-                {% for standing in row.standings %}
-                  <tr class="{% if forloop.counter <= tournament.qualifiers_per_zone %}qualified{% endif %}">
-                    <td>{{ standing.position }}</td>
-                    <td>{{ standing.team }}</td>
-                    <td>{{ standing.played }}</td>
-                    <td>{{ standing.won }}</td>
-                    <td>{{ standing.lost }}</td>
-                    <td><strong>{{ standing.points }}</strong></td>
-                    <td>{{ standing.set_diff }}</td>
-                    <td>{{ standing.game_diff }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </section>
-        {% endfor %}
-      </section>
-    {% endif %}
   </main>
 </body>
 </html>

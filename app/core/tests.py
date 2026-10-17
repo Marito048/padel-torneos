@@ -2057,12 +2057,13 @@ class PublicViewsTests(TournamentFixtureMixin, TestCase):
         self.assertContains(response, "Torneo publico")
         response = self.client.get("/torneos/publico/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, str(match.team1))
+        self.assertContains(response, match.team1.display_name)
 
-    def test_public_detail_shows_fixture_with_results(self):
-        """El detalle público muestra el fixture de zonas con marcador y partidos pendientes."""
+    def test_public_detail_shows_group_fixture_with_results(self):
+        """Las tarjetas de zonas muestran marcador, ganador y partidos pendientes; sin tablas."""
         tournament = self.make_tournament(slug="fixture-publico")
-        self.add_teams(tournament, 3)
+        for name in ("Alfa", "Beta", "Gamma"):
+            self.add_team(tournament, name=name)
         zone = self.make_zones(tournament, [3])[0]
         matches = list(zone.matches.filter(stage="group").order_by("slot", "id"))
         self.play_match(matches[0], matches[0].team1)
@@ -2072,10 +2073,12 @@ class PublicViewsTests(TournamentFixtureMixin, TestCase):
         self.assertContains(response, f"Zona {zone.name}")
         self.assertContains(response, "6-4 6-3")
         self.assertContains(response, "Pendiente")
-        self.assertContains(response, str(matches[0].team2))
+        for name in ("Alfa", "Beta", "Gamma"):
+            self.assertContains(response, name)
+        self.assertNotContains(response, "Posiciones")
 
-    def test_public_fixture_goes_from_groups_to_final(self):
-        """El fixture público incluye las eliminatorias hasta la final, con lugares «Por definir»."""
+    def test_public_bracket_is_graphical_and_goes_to_the_final(self):
+        """El cuadro gráfico de eliminatorias va de la primera ronda a la final y marca al ganador."""
         tournament = self.completed_tournament(4, slug="fixture-llaves")
         draws.ensure_playoff_bracket(tournament)
         semi = Match.objects.filter(tournament=tournament, stage="semi").order_by("slot").first()
@@ -2084,8 +2087,13 @@ class PublicViewsTests(TournamentFixtureMixin, TestCase):
         self.assertContains(response, "Eliminatorias")
         self.assertContains(response, "Semifinal")
         self.assertContains(response, "Final")
+        self.assertContains(response, "bracket-canvas")
+        self.assertContains(response, "bracket_tree.js")
+        self.assertContains(response, "is-winner")
+        self.assertContains(response, "data-next=")
         self.assertContains(response, "6-4 6-3")
         self.assertContains(response, "Por definir")
+        self.assertNotContains(response, "Posiciones")
 
 
 class GeneralSettingsTests(TestCase):
