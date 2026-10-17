@@ -17,7 +17,7 @@
     </header>
     <section class="panel-section">
       <h1>Torneos</h1>
-      <p class="muted">Consultá zonas, resultados y llaves eliminatorias.</p>
+      <p class="muted">Consultá el fixture con todos los resultados, desde la fase de grupos hasta la final.</p>
     </section>
     {% if tournaments %}
       <div class="padel-grid">
@@ -29,7 +29,7 @@
               <span class="status-pill {% if t.status == 'finished' %}status-pill--done{% elif t.status == 'running' %}status-pill--running{% else %}status-pill--pending{% endif %}">{{ t.get_status_display }}</span>
               <span class="muted">{{ t.start_date }}</span>
             </p>
-            <a class="btn btn--primary" href="{% url 'public_tournament_detail' t.slug %}">Ver torneo</a>
+            <a class="btn btn--primary" href="{% url 'public_tournament_detail' t.slug %}">Ver fixture</a>
           </article>
         {% endfor %}
       </div>

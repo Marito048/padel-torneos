@@ -30,82 +30,73 @@
       </p>
     </section>
 
-    {% for row in zones %}
-      <section class="padel-card">
-        <header class="zone-card__header">
-          <h2>Zona {{ row.zone.name }}</h2>
-          {% if row.official %}<span class="status-pill status-pill--done">Oficial</span>
-          {% else %}<span class="status-pill status-pill--running">Provisional</span>{% endif %}
-        </header>
-        <table class="data-table">
-          <thead>
-            <tr><th>#</th><th>Dupla</th><th>PJ</th><th>PG</th><th>PP</th><th>Pts</th><th>Sets +/-</th><th>Games +/-</th></tr>
-          </thead>
-          <tbody>
-            {% for standing in row.standings %}
-              <tr class="{% if forloop.counter <= tournament.qualifiers_per_zone %}qualified{% endif %}">
-                <td>{{ standing.position }}</td>
-                <td>{{ standing.team }}</td>
-                <td>{{ standing.played }}</td>
-                <td>{{ standing.won }}</td>
-                <td>{{ standing.lost }}</td>
-                <td><strong>{{ standing.points }}</strong></td>
-                <td>{{ standing.set_diff }}</td>
-                <td>{{ standing.game_diff }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </section>
-    {% empty %}
-      <p class="alert alert--info">El torneo todavía no tiene zonas publicadas.</p>
-    {% endfor %}
-
     <section class="panel-section">
-      <h2>Partidos</h2>
-      <div class="match-list">
-        {% for match in matches %}
-          {% if not match.is_bye %}
-            <article class="match-row">
-              <div class="scoreboard">
-                <span class="team {% if match.winner_id == match.team1_id %}winner{% endif %}">{{ match.team1|default:"Por definir" }}</span>
-                <span class="vs">vs</span>
-                <span class="team {% if match.winner_id == match.team2_id %}winner{% endif %}">{{ match.team2|default:"Por definir" }}</span>
-              </div>
-              <div class="match-row__meta">
-                <span class="status-pill status-pill--running">{% if match.stage == "group" %}Zona {{ match.zone.name }}{% else %}{{ match.display_stage }} · partido {{ match.slot }}{% endif %}</span>
-                {% if match.score %}<span class="score">{{ match.score }}</span>{% endif %}
-                {% if match.is_walkover %}<span class="status-pill status-pill--done">Walkover</span>{% endif %}
-              </div>
-            </article>
-          {% endif %}
-        {% endfor %}
-      </div>
-    </section>
+      <h2>Fixture</h2>
 
-    {% if rounds %}
-      <section class="panel-section">
-        <h2>Llaves eliminatorias</h2>
-        <div class="bracket">
-          {% for round in rounds %}
-            <div class="bracket-round">
-              <h3>{{ round.label }}</h3>
-              {% for match in round.matches %}
-                <article class="bracket-match {% if match.is_bye %}bracket-match--bye{% endif %}">
-                  {% if match.is_bye %}
-                    <p class="bracket-note">Descanso (bye) · posición {{ match.slot }}</p>
-                    <p class="team winner">{{ match.team1|default:match.team2 }}</p>
-                  {% else %}
-                    <p class="bracket-note">Partido {{ match.slot }}</p>
-                    <p class="team {% if match.winner_id == match.team1_id %}winner{% endif %}">{{ match.team1|default:"Por definir" }}</p>
-                    <p class="team {% if match.winner_id == match.team2_id %}winner{% endif %}">{{ match.team2|default:"Por definir" }}</p>
-                    {% if match.score %}<p class="score">{{ match.score }}</p>{% endif %}
-                  {% endif %}
-                </article>
+      {% if zones %}
+        <h3 class="fixture-phase">Fase de grupos</h3>
+        {% for row in zones %}
+          <div class="fixture-zone">
+            <h4>Zona {{ row.zone.name }}</h4>
+            <div class="match-list">
+              {% for match in row.matches %}
+                {% include "_fixture_match_row.html" %}
+              {% empty %}
+                <p class="muted">La zona todavía no tiene partidos.</p>
               {% endfor %}
             </div>
-          {% endfor %}
-        </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="alert alert--info">El torneo todavía no tiene zonas publicadas.</p>
+      {% endif %}
+
+      {% if rounds %}
+        <h3 class="fixture-phase">Eliminatorias</h3>
+        {% for round in rounds %}
+          <div class="fixture-zone">
+            <h4>{{ round.label }}</h4>
+            <div class="match-list">
+              {% for match in round.matches %}
+                {% include "_fixture_match_row.html" %}
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </section>
+
+    {% if zones %}
+      <section class="panel-section">
+        <h2>Posiciones</h2>
+        {% for row in zones %}
+          <section class="padel-card">
+            <header class="zone-card__header">
+              <h3>Zona {{ row.zone.name }}</h3>
+              {% if row.official %}<span class="status-pill status-pill--done">Oficial</span>
+              {% else %}<span class="status-pill status-pill--running">Provisional</span>{% endif %}
+            </header>
+            <table class="data-table">
+              <thead>
+                <tr><th>#</th><th>Dupla</th><th>PJ</th><th>PG</th><th>PP</th><th>Pts</th><th>Sets +/-</th><th>Games +/-</th></tr>
+              </thead>
+              <tbody>
+                {% for standing in row.standings %}
+                  <tr class="{% if forloop.counter <= tournament.qualifiers_per_zone %}qualified{% endif %}">
+                    <td>{{ standing.position }}</td>
+                    <td>{{ standing.team }}</td>
+                    <td>{{ standing.played }}</td>
+                    <td>{{ standing.won }}</td>
+                    <td>{{ standing.lost }}</td>
+                    <td><strong>{{ standing.points }}</strong></td>
+                    <td>{{ standing.set_diff }}</td>
+                    <td>{{ standing.game_diff }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </section>
+        {% endfor %}
       </section>
     {% endif %}
   </main>

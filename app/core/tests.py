@@ -2059,6 +2059,34 @@ class PublicViewsTests(TournamentFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, str(match.team1))
 
+    def test_public_detail_shows_fixture_with_results(self):
+        """El detalle público muestra el fixture de zonas con marcador y partidos pendientes."""
+        tournament = self.make_tournament(slug="fixture-publico")
+        self.add_teams(tournament, 3)
+        zone = self.make_zones(tournament, [3])[0]
+        matches = list(zone.matches.filter(stage="group").order_by("slot", "id"))
+        self.play_match(matches[0], matches[0].team1)
+        response = self.client.get("/torneos/fixture-publico/")
+        self.assertContains(response, "Fixture")
+        self.assertContains(response, "Fase de grupos")
+        self.assertContains(response, f"Zona {zone.name}")
+        self.assertContains(response, "6-4 6-3")
+        self.assertContains(response, "Pendiente")
+        self.assertContains(response, str(matches[0].team2))
+
+    def test_public_fixture_goes_from_groups_to_final(self):
+        """El fixture público incluye las eliminatorias hasta la final, con lugares «Por definir»."""
+        tournament = self.completed_tournament(4, slug="fixture-llaves")
+        draws.ensure_playoff_bracket(tournament)
+        semi = Match.objects.filter(tournament=tournament, stage="semi").order_by("slot").first()
+        self.play_match(semi, semi.team1)
+        response = self.client.get("/torneos/fixture-llaves/")
+        self.assertContains(response, "Eliminatorias")
+        self.assertContains(response, "Semifinal")
+        self.assertContains(response, "Final")
+        self.assertContains(response, "6-4 6-3")
+        self.assertContains(response, "Por definir")
+
 
 class GeneralSettingsTests(TestCase):
     """Configuración general: alta y edición de usuarios del panel."""

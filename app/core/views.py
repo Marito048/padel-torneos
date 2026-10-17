@@ -1644,22 +1644,21 @@ def public_tournament_detail(request, slug):
         zones.append(
             {
                 "zone": zone,
+                "matches": list(
+                    zone.matches.filter(stage="group")
+                    .select_related("team1", "team2", "winner", "court")
+                    .order_by("slot", "id")
+                ),
                 "standings": draws.official_zone_standings(zone) if complete else draws.basic_zone_standings(zone),
                 "official": complete,
             }
         )
-    matches = (
-        Match.objects.filter(tournament=tournament)
-        .select_related("team1", "team2", "winner", "zone")
-        .order_by("stage", "round_number", "slot", "id")
-    )
     return render(
         request,
         "tournament_detail.html",
         {
             "tournament": tournament,
             "zones": zones,
-            "matches": matches,
             "rounds": draws.bracket_rounds(tournament),
         },
     )

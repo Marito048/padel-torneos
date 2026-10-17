@@ -364,6 +364,13 @@ body.padel-page {
 .scoreboard .team.winner::after { content: " ✓"; color: var(--ps-green); }
 .score { font-weight: 900; color: var(--ps-green-dark); }
 
+/* Fixture público */
+.fixture-phase { margin: 1.5rem 0 .6rem; font-size: .85rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ps-muted); }
+.fixture-phase:first-of-type { margin-top: .5rem; }
+.fixture-zone { margin-bottom: 1.1rem; }
+.fixture-zone h4 { margin: 0 0 .5rem; }
+.match-row__bye { margin: 0; }
+
 .result-card { margin-bottom: .9rem; }
 .result-card__header { margin-bottom: .5rem; }
 .result-form {
