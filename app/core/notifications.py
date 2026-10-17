@@ -1,14 +1,16 @@
-"""Avisos al equipo cuando entra una solicitud de registro.
+"""Avisos al equipo cuando entra una solicitud de registro o una autoinscripción.
 
 Todos los canales son opcionales y se configuran por `.env`:
 
 - **Email**: a los administradores generales activos que tengan email y, si
-  está definida, a la dirección extra ``SIGNUP_ALERT_EMAIL``.
+  está definida, a la dirección extra ``SIGNUP_ALERT_EMAIL``. Para las
+  autoinscripciones también se avisa a los usuarios del complejo del torneo.
 - **WhatsApp**: vía CallMeBot (``WHATSAPP_ALERT_PHONE`` + ``WHATSAPP_ALERT_APIKEY``).
 
 Si ningún canal está configurado, la solicitud igual queda en Configuración
-general y registrada en el log del servicio. Los fallos de envío nunca
-interrumpen la página pública: sólo quedan anotados en el log.
+general (o en el panel de parejas) y registrada en el log del servicio. Los
+fallos de envío nunca interrumpen la página pública: sólo quedan anotados en
+el log.
 """
 
 from __future__ import annotations
@@ -46,12 +48,39 @@ def notify_new_signup_request(request_row, panel_url: str) -> None:
     text = "Pádel Server: nueva solicitud de registro.\n" + "\n".join(lines) + (
         f"\nRevisala en Configuración general → Solicitudes de registro: {panel_url}"
     )
-    _send_email(request_row.email, text)
+    _send_email(f"[Pádel Server] Nueva solicitud de registro: {request_row.email}", text)
     _send_whatsapp(text)
 
 
-def _alert_recipients() -> list[str]:
-    recipients = set()
+def notify_tournament_team_signup(tournament, team, phones: list[str], panel_url: str) -> None:
+    """Avisa que una pareja se autoinscribió (queda pendiente de confirmar)."""
+    logger.info("Autoinscripción: %s en %s", team, tournament.name)
+    lines = []
+    if tournament.complex_id:
+        lines.append(f"Complejo: {tournament.complex.name}")
+    lines.append(f"Torneo: {tournament.name}")
+    lines.append(f"Dupla: {team}")
+    for phone in phones:
+        if phone:
+            lines.append(f"Teléfono: {phone}")
+    text = (
+        "Pádel Server: nueva pareja anotada por autoinscripción (pendiente de confirmación).\n"
+        + "\n".join(lines)
+        + f"\nConfirmala desde el panel de parejas: {panel_url}"
+    )
+    extra = []
+    if tournament.complex_id:
+        extra = list(
+            tournament.complex.users.filter(is_active=True)
+            .exclude(email="")
+            .values_list("email", flat=True)
+        )
+    _send_email(f"[Pádel Server] Nueva pareja anotada: {tournament.name}", text, extra)
+    _send_whatsapp(text)
+
+
+def _alert_recipients(extra: list[str] | None = None) -> list[str]:
+    recipients = set(extra or [])
     configured = getattr(settings, "SIGNUP_ALERT_EMAIL", "")
     if configured:
         recipients.add(configured)
@@ -64,13 +93,13 @@ def _alert_recipients() -> list[str]:
     return sorted(recipients)
 
 
-def _send_email(email: str, text: str) -> None:
-    recipients = _alert_recipients()
+def _send_email(subject: str, text: str, extra_recipients: list[str] | None = None) -> None:
+    recipients = _alert_recipients(extra_recipients)
     if not recipients:
         return
     try:
         send_mail(
-            f"[Pádel Server] Nueva solicitud de registro: {email}",
+            subject,
             text,
             settings.DEFAULT_FROM_EMAIL,
             recipients,

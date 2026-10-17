@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import RequestFactory, TestCase, override_settings
@@ -37,6 +38,7 @@ from core.models import (
 from core.services import draws
 from core.services import players as players_service
 from core.services.draws import BracketConflictError, BracketError, has_super, parse_sets
+from core.views import _SIGNUP_FAIL_LIMIT
 from core.services.matches import create_group_match, delete_group_match
 from core.services.tournament_workflow import register_match_result
 
@@ -2971,5 +2973,154 @@ class AuthPagesTests(TestCase):
         response = self.client.post("/cuentas/logout/")
         self.assertEqual(response.status_code, 302)
         response = self.client.get("/gestion/")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith("/cuentas/login/"))
+
+
+class SelfRegistrationTests(TournamentFixtureMixin, TestCase):
+    """Autoinscripción pública de parejas con código y confirmación del complejo."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        User = get_user_model()
+        self.user = User.objects.create_user("dueno", password="clave-segura-123", is_staff=True, is_superuser=True)
+        self.complex = Complex.objects.create(name="Complejo Código", slug="complejo-codigo")
+        self.complex.users.add(self.user)
+        self.tournament = self.make_tournament(slug="codigo", complex_obj=self.complex)
+        self.tournament.status = "open"
+        self.tournament.self_registration_enabled = True
+        self.tournament.save(update_fields=["status", "self_registration_enabled"])
+        self.code = players_service.ensure_registration_code(self.tournament)
+        self.url = "/torneos/codigo/anotarse/"
+
+    def signup_payload(self, **overrides):
+        payload = {
+            "code": self.code,
+            "player1_name": "Gómez, Ana",
+            "player1_gender": "F",
+            "player1_phone": "341 555 1111",
+            "player2_name": "Ferreyra, Juana",
+            "player2_gender": "F",
+            "player2_phone": "",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_signup_page_visible_only_when_open_and_enabled(self):
+        response = self.client.get("/torneos/codigo/")
+        self.assertContains(response, "Anotá tu pareja")
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Código del torneo")
+        response = self.client.get(f"{self.url}?codigo={self.code}")
+        self.assertContains(response, self.code)
+
+        self.tournament.status = "running"
+        self.tournament.save(update_fields=["status"])
+        self.assertNotContains(self.client.get("/torneos/codigo/"), "Anotá tu pareja")
+        response = self.client.get(self.url, follow=True)
+        self.assertContains(response, "no está abierta")
+
+    def test_signup_creates_pending_pair(self):
+        response = self.client.post(self.url, self.signup_payload(), follow=True)
+        self.assertContains(response, "pendiente de confirmación")
+        registration = Registration.objects.get(tournament=self.tournament)
+        self.assertEqual(registration.status, "pending")
+        self.assertEqual(registration.source, "public")
+        self.assertEqual(registration.team.name, "Gómez - Ferreyra")
+        self.assertEqual(registration.team.player1.phone, "341 555 1111")
+        # Recién se juega cuando el complejo la confirma.
+        self.assertNotIn(registration.team_id, players_service.registration_teams(self.tournament))
+        self.assertNotIn(registration.team_id, players_service.tournament_team_ids(self.tournament))
+
+    def test_signup_wrong_code_is_rejected(self):
+        response = self.client.post(self.url, self.signup_payload(code="MALCODIGO"), follow=True)
+        self.assertContains(response, "El código no es correcto")
+        self.assertFalse(Registration.objects.filter(tournament=self.tournament).exists())
+
+    def test_signup_reuses_existing_player_and_blocks_duplicates(self):
+        player1 = Player.objects.create(first_name="Juan", last_name="Pérez", gender="M")
+        player2 = Player.objects.create(first_name="Luis", last_name="Díaz", gender="M")
+        team = Team.objects.create(player1=player1, player2=player2, name="")
+        Registration.objects.create(tournament=self.tournament, team=team, status="confirmed")
+        players_before = Player.objects.count()
+        response = self.client.post(
+            self.url,
+            self.signup_payload(
+                player1_name="Pérez, Juan",
+                player1_gender="M",
+                player2_name="Otro Jugador",
+                player2_gender="M",
+            ),
+            follow=True,
+        )
+        self.assertContains(response, "ya integran otra dupla")
+        self.assertEqual(Player.objects.count(), players_before)
+        self.assertEqual(Registration.objects.filter(tournament=self.tournament).count(), 1)
+
+    def test_signup_requires_both_player_names(self):
+        response = self.client.post(self.url, self.signup_payload(player2_name=""), follow=True)
+        self.assertContains(response, "Completá el nombre y apellido de los dos jugadores")
+        self.assertFalse(Registration.objects.filter(tournament=self.tournament).exists())
+
+    def test_signup_rate_limit_blocks_after_failures(self):
+        for _ in range(_SIGNUP_FAIL_LIMIT):
+            self.client.post(self.url, self.signup_payload(code="MALCODIGO"))
+        response = self.client.post(self.url, self.signup_payload(), follow=True)
+        self.assertContains(response, "Demasiados intentos")
+        self.assertFalse(Registration.objects.filter(tournament=self.tournament).exists())
+
+    def test_panel_confirms_and_rejects_pending_pair(self):
+        self.client.force_login(self.user)
+        player1 = Player.objects.create(first_name="Alta", last_name="Pendiente", gender="M")
+        player2 = Player.objects.create(first_name="Baja", last_name="Pendiente", gender="M")
+        team = players_service.create_team(
+            self.tournament, player1, player2, registration_status="pending", source="public"
+        )
+        registration = Registration.objects.get(tournament=self.tournament, team=team)
+        response = self.client.post(
+            f"/gestion/codigo/inscripciones/{registration.pk}/confirmar/", follow=True
+        )
+        registration.refresh_from_db()
+        self.assertEqual(registration.status, "confirmed")
+        self.assertIn(team.pk, players_service.registration_teams(self.tournament))
+        self.assertContains(response, "quedó confirmada")
+
+        player3 = Player.objects.create(first_name="Recha", last_name="Zada", gender="M")
+        player4 = Player.objects.create(first_name="Fuera", last_name="Zada", gender="M")
+        team2 = players_service.create_team(
+            self.tournament, player3, player4, registration_status="pending", source="public"
+        )
+        registration2 = Registration.objects.get(tournament=self.tournament, team=team2)
+        response = self.client.post(
+            f"/gestion/codigo/inscripciones/{registration2.pk}/rechazar/", follow=True
+        )
+        registration2.refresh_from_db()
+        self.assertEqual(registration2.status, "cancelled")
+        self.assertNotIn(team2.pk, players_service.registration_teams(self.tournament))
+        self.assertContains(response, "Se rechazó la solicitud")
+
+    def test_panel_code_lifecycle(self):
+        self.client.force_login(self.user)
+        old_code = self.code
+        response = self.client.post("/gestion/codigo/autoinscripcion/regenerar/", follow=True)
+        self.tournament.refresh_from_db()
+        self.assertNotEqual(self.tournament.registration_code, old_code)
+        self.assertContains(response, self.tournament.registration_code)
+
+        self.client.post("/gestion/codigo/autoinscripcion/desactivar/", follow=True)
+        self.tournament.refresh_from_db()
+        self.assertFalse(self.tournament.self_registration_enabled)
+
+        self.client.post("/gestion/codigo/autoinscripcion/activar/", follow=True)
+        self.tournament.refresh_from_db()
+        self.assertTrue(self.tournament.self_registration_enabled)
+        self.assertTrue(self.tournament.registration_code)
+        response = self.client.post(self.url, self.signup_payload(code=old_code), follow=True)
+        self.assertContains(response, "El código no es correcto")
+
+    def test_panel_self_registration_requires_login(self):
+        response = self.client.post("/gestion/codigo/autoinscripcion/activar/")
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.url.startswith("/cuentas/login/"))

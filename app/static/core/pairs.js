@@ -144,3 +144,28 @@ document.addEventListener("DOMContentLoaded", function () {
     form.addEventListener("submit", refresh);
     refresh();
 });
+
+// Botones «Copiar» de la tarjeta de autoinscripción (código y link).
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("[data-copy]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            const value = button.getAttribute("data-copy") || "";
+            const done = function () {
+                const original = button.textContent;
+                button.textContent = "¡Copiado!";
+                window.setTimeout(function () { button.textContent = original; }, 1500);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(value).then(done, function () {});
+            } else {
+                const input = document.createElement("input");
+                input.value = value;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand("copy");
+                document.body.removeChild(input);
+                done();
+            }
+        });
+    });
+});

@@ -6,8 +6,55 @@
   <h1>Parejas del torneo</h1>
   <p class="muted">
     {{ team_rows|length }} parejas · {{ used_players_count }} jugadores en este torneo ·
+    {% if pending_rows %}{{ pending_rows|length }} solicitudes pendientes · {% endif %}
     {{ known_players_total }} jugadores guardados en la base.
   </p>
+</section>
+
+<section class="padel-card">
+  <h2>Autoinscripción con código</h2>
+  {% if self_registration_enabled %}
+    <p class="muted">
+      Compartí el código con los jugadores: desde la página pública del torneo pueden anotar su pareja solos.
+      Las parejas anotadas quedan <strong>pendientes</strong> hasta que las confirmes acá abajo.
+    </p>
+    <p class="signup-code-row">
+      <span class="registration-code" id="registration-code">{{ registration_code }}</span>
+      <button class="btn btn--secondary btn--sm" type="button" data-copy="{{ registration_code }}">Copiar código</button>
+      <a class="btn btn--secondary btn--sm" href="{{ whatsapp_share_url }}" target="_blank" rel="noopener">Compartir por WhatsApp</a>
+    </p>
+    <p class="muted">
+      Link directo para anotarse:
+      <span class="signup-url">{{ signup_url }}</span>
+      <button class="btn btn--secondary btn--sm" type="button" data-copy="{{ signup_url }}">Copiar link</button>
+    </p>
+    <div class="form-actions">
+      <form method="post" action="{% url 'panel_self_registration' tournament.slug 'regenerar' %}"
+            data-confirm="¿Generar un código nuevo? El código anterior deja de funcionar.">
+        {% csrf_token %}
+        <button class="btn btn--secondary btn--sm" type="submit">Regenerar código</button>
+      </form>
+      <form method="post" action="{% url 'panel_self_registration' tournament.slug 'desactivar' %}"
+            data-confirm="¿Desactivar la autoinscripción? Nadie podrá anotarse desde la página pública.">
+        {% csrf_token %}
+        <button class="btn btn--danger btn--sm" type="submit">Desactivar</button>
+      </form>
+    </div>
+  {% else %}
+    <p class="muted">
+      Desactivada: nadie puede anotarse solo desde la página pública del torneo.
+      Al activarla se genera un código para que se lo pases a los jugadores.
+    </p>
+    <p class="muted">
+      Sólo funciona mientras el torneo está en <strong>Inscripciones</strong>; cuando arranca se cierra sola.
+    </p>
+    <div class="form-actions">
+      <form method="post" action="{% url 'panel_self_registration' tournament.slug 'activar' %}">
+        {% csrf_token %}
+        <button class="btn btn--primary" type="submit">Activar autoinscripción</button>
+      </form>
+    </div>
+  {% endif %}
 </section>
 
 <section class="padel-card">
@@ -77,12 +124,49 @@
 </section>
 
 <section class="panel-section">
+  {% if pending_rows %}
+    <h2>Solicitudes pendientes ({{ pending_rows|length }})</h2>
+    <p class="muted">
+      Se anotaron solas desde la página pública. Hasta que las confirmes no entran al torneo:
+      no se sortean zonas ni se generan partidos con ellas.
+    </p>
+    <div class="card-list">
+      {% for row in pending_rows %}
+        <article class="padel-card team-card">
+          <h3>{{ row.team }}</h3>
+          <p>
+            <span class="status-pill status-pill--pending">Pendiente</span>
+            {% if row.registration.source == "public" %}<span class="status-pill status-pill--running">Autoinscripta</span>{% endif %}
+          </p>
+          <p class="muted">
+            Anotada el {{ row.registration.created_at|date:"d/m/Y H:i" }}
+            {% if row.phones %} · Tel: {{ row.phones|join:" · " }}{% endif %}
+          </p>
+          <div class="form-actions">
+            <form method="post" action="{% url 'panel_registration_action' tournament.slug row.registration.pk 'confirmar' %}">
+              {% csrf_token %}
+              <button class="btn btn--primary btn--sm" type="submit">Confirmar</button>
+            </form>
+            <form method="post" action="{% url 'panel_registration_action' tournament.slug row.registration.pk 'rechazar' %}"
+                  data-confirm="¿Rechazar esta solicitud? La pareja no entra al torneo.">
+              {% csrf_token %}
+              <button class="btn btn--danger btn--sm" type="submit">Rechazar</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
   <h2>Parejas inscriptas</h2>
   {% if team_rows %}
     <div class="card-list">
       {% for row in team_rows %}
         <article class="padel-card team-card">
           <h3>{{ row.team }}</h3>
+          <p>
+            <span class="status-pill {% if row.registration.status == 'paid' %}status-pill--running{% else %}status-pill--done{% endif %}">{{ row.registration.get_status_display }}</span>
+            {% if row.registration.source == "public" %}<span class="status-pill status-pill--pending">Autoinscripta</span>{% endif %}
+          </p>
           <p class="muted">
             {% if row.zone %}Zona {{ row.zone.name }}{% else %}Sin zona asignada{% endif %}
             · {{ row.matches }} partidos

@@ -1,0 +1,78 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anotarse · {{ tournament.name }}</title>
+  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
+</head>
+<body class="padel-page">
+  <main class="padel-shell" style="max-width: 640px;">
+    <header class="padel-topbar">
+      <div class="padel-brand"><span class="padel-badge">PA</span><span>{{ tournament.name }}</span></div>
+      <div class="padel-topbar__meta">
+        {% if tournament.complex %}<span class="chip">{{ tournament.complex.name }}</span>{% endif %}
+      </div>
+      <div class="padel-actions">
+        <a class="btn btn--secondary btn--sm" href="{% url 'public_tournament_detail' tournament.slug %}">Volver al torneo</a>
+      </div>
+    </header>
+    <section class="padel-card">
+      <h1>Anotá tu pareja</h1>
+      {% if messages %}
+        {% for message in messages %}<p class="alert alert--{{ message.tags|default:'info' }}">{{ message }}</p>{% endfor %}
+      {% endif %}
+      <p class="help">
+        Pedile al complejo el código del torneo y completá los datos de los dos jugadores.
+        La pareja queda anotada y pendiente de confirmación del complejo.
+      </p>
+      <form method="post" action="{% url 'public_tournament_signup' tournament.slug %}" class="form-grid">
+        {% csrf_token %}
+        <label>Código del torneo
+          <input type="text" name="code" value="{{ entered.code }}" maxlength="12" required
+                 autocomplete="off" spellcheck="false" placeholder="Ej: PX7K42QN" style="text-transform: uppercase;">
+        </label>
+        <h2 class="signup-player-title">Jugador 1</h2>
+        <label>Nombre y apellido
+          <input type="text" name="player1_name" value="{{ entered.player1_name }}" maxlength="130" required
+                 autocomplete="off" placeholder="Ej: Ana Gómez">
+        </label>
+        <label>Género
+          <select name="player1_gender">
+            {% for value, label in genders %}<option value="{{ value }}"{% if entered.player1_gender == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Teléfono (opcional)
+          <input type="text" name="player1_phone" value="{{ entered.player1_phone }}" maxlength="40"
+                 autocomplete="tel" placeholder="Ej: 341 555 5555">
+        </label>
+        <h2 class="signup-player-title">Jugador 2</h2>
+        <label>Nombre y apellido
+          <input type="text" name="player2_name" value="{{ entered.player2_name }}" maxlength="130" required
+                 autocomplete="off" placeholder="Ej: Luis Pérez">
+        </label>
+        <label>Género
+          <select name="player2_gender">
+            {% for value, label in genders %}<option value="{{ value }}"{% if entered.player2_gender == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Teléfono (opcional)
+          <input type="text" name="player2_phone" value="{{ entered.player2_phone }}" maxlength="40"
+                 autocomplete="tel" placeholder="Ej: 341 555 6666">
+        </label>
+        <div style="display: none;" aria-hidden="true">
+          <label>No completar
+            <input type="text" name="website" tabindex="-1" autocomplete="off">
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn--primary" type="submit">Anotar pareja</button>
+          <a class="btn btn--secondary" href="{% url 'public_tournament_detail' tournament.slug %}">Cancelar</a>
+        </div>
+      </form>
+      <p class="help">Un jugador no puede jugar en dos parejas del mismo torneo. Si ya estabas anotado, avisale al complejo.</p>
+    </section>
+  </main>
+</body>
+</html>

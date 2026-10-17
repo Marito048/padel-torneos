@@ -48,6 +48,16 @@ urlpatterns = [
     path("gestion/<slug:slug>/parejas/", views.panel_teams, name="panel_teams"),
     path("gestion/<slug:slug>/parejas/crear/", views.panel_team_create, name="panel_team_create"),
     path("gestion/<slug:slug>/parejas/<int:team_id>/eliminar/", views.panel_team_delete, name="panel_team_delete"),
+    path(
+        "gestion/<slug:slug>/autoinscripcion/<str:action>/",
+        views.panel_self_registration,
+        name="panel_self_registration",
+    ),
+    path(
+        "gestion/<slug:slug>/inscripciones/<int:registration_id>/<str:action>/",
+        views.panel_registration_action,
+        name="panel_registration_action",
+    ),
     path("gestion/<slug:slug>/jugadores/", views.panel_players, name="panel_players"),
     path("gestion/<slug:slug>/jugadores/crear/", views.panel_player_create, name="panel_player_create"),
     path("gestion/<slug:slug>/jugadores/<int:player_id>/", views.panel_player_edit, name="panel_player_edit"),
@@ -81,6 +91,7 @@ urlpatterns = [
     # Consulta pública.
     path("torneos/", views.public_tournaments, name="public_tournaments"),
     path("torneos/<slug:slug>/", views.public_tournament_detail, name="public_tournament_detail"),
+    path("torneos/<slug:slug>/anotarse/", views.public_tournament_signup, name="public_tournament_signup"),
 ]
 
 __all__ = ["urlpatterns"]

@@ -9,24 +9,27 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
+from django.core.cache import cache
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.models import Count, ProtectedError, Q
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from core import access
 from core.models import Complex, Invitation, Match, Player, Registration, RegistrationRequest, Team, TemporaryPassword, Tournament, TournamentPlayer, Zone, ZoneTeam
-from core.notifications import notify_new_signup_request
+from core.notifications import notify_new_signup_request, notify_tournament_team_signup
 from core.services import draws
 from core.services import matches as matches_service
 from core.services import players as players_service
@@ -296,23 +299,55 @@ def panel_tournament_delete(request, slug):
 @login_required
 def panel_teams(request, slug):
     tournament = _tournament_or_404(request, slug)
-    teams = list(players_service.tournament_teams(tournament))
+    if tournament.self_registration_enabled and not tournament.registration_code:
+        players_service.ensure_registration_code(tournament)
+    registrations = list(
+        Registration.objects.filter(tournament=tournament)
+        .exclude(status="cancelled")
+        .select_related("team", "team__player1", "team__player2")
+        .order_by("created_at", "id")
+    )
     zone_by_team = {
         assignment.team_id: assignment.zone for assignment in ZoneTeam.objects.filter(zone__tournament=tournament).select_related("zone")
     }
-    team_rows = [
-        {
-            "team": team,
-            "zone": zone_by_team.get(team.pk),
-            "matches": Match.objects.filter(tournament=tournament).filter(Q(team1=team) | Q(team2=team)).count(),
+    team_rows = []
+    pending_rows = []
+    for registration in registrations:
+        row = {
+            "registration": registration,
+            "team": registration.team,
+            "zone": zone_by_team.get(registration.team_id),
+            "matches": Match.objects.filter(tournament=tournament)
+            .filter(Q(team1=registration.team) | Q(team2=registration.team))
+            .count(),
         }
-        for team in teams
-    ]
+        if registration.status == "pending":
+            row["phones"] = [
+                phone
+                for phone in (registration.team.player1.phone, registration.team.player2.phone)
+                if phone
+            ]
+            pending_rows.append(row)
+        else:
+            team_rows.append(row)
+    signup_url = request.build_absolute_uri(
+        reverse("public_tournament_signup", kwargs={"slug": tournament.slug})
+    )
+    whatsapp_text = quote(
+        f"Anotate al torneo «{tournament.name}» 🎾\n"
+        f"Link: {signup_url}\n"
+        f"Código: {tournament.registration_code or ''}"
+    )
     context = _panel_context(
         request,
         tournament,
         "parejas",
         team_rows=team_rows,
+        pending_rows=pending_rows,
+        self_registration_enabled=tournament.self_registration_enabled,
+        registration_code=tournament.registration_code,
+        signup_url=signup_url,
+        whatsapp_share_url=f"https://wa.me/?text={whatsapp_text}",
         available_players=players_service.available_players(tournament),
         used_players_count=len(players_service.player_ids_in_tournament(tournament)),
         known_players_total=Player.objects.filter(active=True).count(),
@@ -320,6 +355,56 @@ def panel_teams(request, slug):
         levels=Player.LEVEL,
     )
     return render(request, "panel/teams.html", context)
+
+
+@login_required
+@require_POST
+def panel_self_registration(request, slug, action):
+    """Activa/desactiva la autoinscripción o genera un código nuevo."""
+    tournament = _tournament_or_404(request, slug)
+    if action == "activar":
+
+        def activate() -> None:
+            players_service.ensure_registration_code(tournament)
+            tournament.self_registration_enabled = True
+            tournament.save(update_fields=["self_registration_enabled"])
+
+        _run_action(request, activate, "Autoinscripción activada: compartí el código con los jugadores.")
+    elif action == "desactivar":
+        tournament.self_registration_enabled = False
+        tournament.save(update_fields=["self_registration_enabled"])
+        messages.success(request, "Autoinscripción desactivada. El código queda guardado por si la reactivás.")
+    elif action == "regenerar":
+        _run_action(
+            request,
+            lambda: players_service.regenerate_registration_code(tournament),
+            "Código nuevo generado: el anterior ya no funciona.",
+        )
+    else:
+        raise Http404("Acción desconocida.")
+    return redirect("panel_teams", slug=tournament.slug)
+
+
+@login_required
+@require_POST
+def panel_registration_action(request, slug, registration_id, action):
+    """Confirma o rechaza una solicitud de autoinscripción."""
+    tournament = _tournament_or_404(request, slug)
+    registration = get_object_or_404(Registration, pk=registration_id, tournament=tournament)
+    if action == "confirmar":
+
+        def confirm() -> None:
+            registration.status = "confirmed"
+            registration.save()
+
+        _run_action(request, confirm, f"{registration.team} quedó confirmada en el torneo.")
+    elif action == "rechazar":
+        registration.status = "cancelled"
+        registration.save()
+        messages.success(request, f"Se rechazó la solicitud de {registration.team}. No entra al torneo.")
+    else:
+        raise Http404("Acción desconocida.")
+    return redirect("panel_teams", slug=tournament.slug)
 
 
 @login_required
@@ -1685,5 +1770,116 @@ def public_tournament_detail(request, slug):
             "tournament": tournament,
             "zones": zones,
             "tree": tree,
+            "signup_open": _signup_open(tournament),
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Autoinscripción pública de parejas (código del complejo)
+# ---------------------------------------------------------------------------
+
+_SIGNUP_OK = "¡Listo! Tu pareja quedó anotada y pendiente de confirmación del complejo."
+_SIGNUP_FAIL_LIMIT = 15
+_SIGNUP_FAIL_WINDOW = 900  # segundos
+
+
+def _signup_open(tournament: Tournament) -> bool:
+    return bool(
+        tournament.status == "open"
+        and tournament.self_registration_enabled
+        and tournament.registration_code
+    )
+
+
+def _signup_attempts_key(request) -> str:
+    forwarded = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")[0].strip()
+    ip = forwarded or request.META.get("REMOTE_ADDR", "local")
+    return f"signup-code-fail:{ip}"
+
+
+def _register_signup_failure(request) -> None:
+    key = _signup_attempts_key(request)
+    current = int(cache.get(key, 0) or 0)
+    cache.set(key, current + 1, _SIGNUP_FAIL_WINDOW)
+
+
+def public_tournament_signup(request, slug):
+    """Formulario público para que una pareja se anote con el código del torneo."""
+    tournament = get_object_or_404(Tournament.objects.select_related("complex"), slug=slug)
+    if not _signup_open(tournament):
+        messages.info(
+            request,
+            "La autoinscripción de este torneo no está abierta. Consultá con el complejo.",
+        )
+        return redirect("public_tournament_detail", slug=tournament.slug)
+
+    entered = {"code": (request.GET.get("codigo") or "").strip().upper()}
+    if request.method == "POST":
+        entered = {
+            "code": (request.POST.get("code") or "").strip().upper(),
+            "player1_name": (request.POST.get("player1_name") or "").strip(),
+            "player1_gender": request.POST.get("player1_gender", ""),
+            "player1_phone": (request.POST.get("player1_phone") or "").strip(),
+            "player2_name": (request.POST.get("player2_name") or "").strip(),
+            "player2_gender": request.POST.get("player2_gender", ""),
+            "player2_phone": (request.POST.get("player2_phone") or "").strip(),
+        }
+        if (request.POST.get("website") or "").strip():
+            # Honeypot: sólo los bots completan el campo oculto.
+            messages.success(request, _SIGNUP_OK)
+            return redirect("public_tournament_detail", slug=tournament.slug)
+        if int(cache.get(_signup_attempts_key(request), 0) or 0) >= _SIGNUP_FAIL_LIMIT:
+            messages.error(
+                request, "Demasiados intentos con códigos incorrectos. Probá de nuevo en un rato."
+            )
+        elif entered["code"] != tournament.registration_code:
+            _register_signup_failure(request)
+            messages.error(request, "El código no es correcto. Pedíselo de nuevo al complejo.")
+        elif not (entered["player1_name"] and entered["player2_name"]):
+            messages.error(request, "Completá el nombre y apellido de los dos jugadores.")
+        else:
+            try:
+                with transaction.atomic():
+                    player1, _ = players_service.resolve_player(
+                        entered["player1_name"],
+                        gender=entered["player1_gender"],
+                        level=tournament.category,
+                    )
+                    player2, _ = players_service.resolve_player(
+                        entered["player2_name"],
+                        gender=entered["player2_gender"],
+                        level=tournament.category,
+                    )
+                    for player, phone in (
+                        (player1, entered["player1_phone"]),
+                        (player2, entered["player2_phone"]),
+                    ):
+                        if phone and not player.phone:
+                            player.phone = phone
+                            player.save(update_fields=["phone"])
+                    team = players_service.create_team(
+                        tournament,
+                        player1,
+                        player2,
+                        registration_status="pending",
+                        source="public",
+                    )
+            except ValidationError as exc:
+                messages.error(request, _error_text(exc))
+            else:
+                cache.delete(_signup_attempts_key(request))
+                notify_tournament_team_signup(
+                    tournament,
+                    team,
+                    [entered["player1_phone"], entered["player2_phone"]],
+                    request.build_absolute_uri(reverse("panel_teams", kwargs={"slug": tournament.slug})),
+                )
+                messages.success(request, _SIGNUP_OK)
+                return redirect("public_tournament_detail", slug=tournament.slug)
+
+    return render(
+        request,
+        "tournament_signup.html",
+        {"tournament": tournament, "entered": entered, "genders": Player.GENDER},
     )

@@ -29,14 +29,16 @@ from core.models import (
     ZoneTeam,
 )
 
-ACTIVE_REGISTRATION_STATUSES = ["pending", "paid", "confirmed"]
+# Estados que cuentan como «dentro del torneo». Las inscripciones pendientes
+# (autoinscripción pública) recién entran cuando el complejo las confirma.
+IN_TOURNAMENT_REGISTRATION_STATUSES = ["paid", "confirmed"]
 
 
 def registration_teams(tournament) -> set[int]:
     return set(
-        Registration.objects.filter(tournament=tournament)
-        .exclude(status="cancelled")
-        .values_list("team_id", flat=True)
+        Registration.objects.filter(
+            tournament=tournament, status__in=IN_TOURNAMENT_REGISTRATION_STATUSES
+        ).values_list("team_id", flat=True)
     )
 
 
@@ -334,8 +336,45 @@ def delete_player(player: Player) -> dict:
         return {"teams": len(teams)}
 
 
-def create_team(tournament: Tournament, player1: Player, player2: Player, name: str = "") -> Team:
-    """Crea (o reutiliza) la dupla y la inscribe en el torneo, validando unicidad."""
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+CODE_LENGTH = 8
+
+
+def _new_registration_code() -> str:
+    return "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+
+
+def ensure_registration_code(tournament: Tournament) -> str:
+    """Devuelve el código de autoinscripción del torneo, generándolo si falta."""
+    if tournament.registration_code:
+        return tournament.registration_code
+    tournament.registration_code = _new_registration_code()
+    tournament.save(update_fields=["registration_code"])
+    return tournament.registration_code
+
+
+def regenerate_registration_code(tournament: Tournament) -> str:
+    """Genera un código nuevo: el anterior deja de servir."""
+    tournament.registration_code = _new_registration_code()
+    tournament.save(update_fields=["registration_code"])
+    return tournament.registration_code
+
+
+def create_team(
+    tournament: Tournament,
+    player1: Player,
+    player2: Player,
+    name: str = "",
+    *,
+    registration_status: str = "confirmed",
+    source: str = "panel",
+) -> Team:
+    """Crea (o reutiliza) la dupla y la inscribe en el torneo, validando unicidad.
+
+    ``registration_status="pending"`` deja la inscripción como solicitud
+    (autoinscripción pública): no cuenta como «dentro del torneo» hasta que el
+    complejo la confirme.
+    """
     if player1.pk == player2.pk:
         raise ValidationError("La dupla no puede tener el mismo jugador dos veces.")
     with transaction.atomic():
@@ -364,7 +403,16 @@ def create_team(tournament: Tournament, player1: Player, player2: Player, name: 
         existing = Registration.objects.filter(tournament=locked, team=team).exclude(status="cancelled").exists()
         if existing:
             raise ValidationError("Esa pareja ya está inscripta en el torneo.")
-        Registration.objects.create(tournament=locked, team=team, status="confirmed")
+        previous = Registration.objects.filter(tournament=locked, team=team).first()
+        if previous is not None:
+            # Reinscripción de una dupla rechazada antes: se reactiva la misma fila.
+            previous.status = registration_status
+            previous.source = source
+            previous.save()
+        else:
+            Registration.objects.create(
+                tournament=locked, team=team, status=registration_status, source=source
+            )
         sync_tournament_players(locked)
         return team
 

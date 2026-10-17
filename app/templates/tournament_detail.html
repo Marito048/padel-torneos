@@ -30,6 +30,20 @@
       </p>
     </section>
 
+    {% if messages %}
+      <section class="panel-section">
+        {% for message in messages %}<p class="alert alert--{{ message.tags|default:'info' }}">{{ message }}</p>{% endfor %}
+      </section>
+    {% endif %}
+
+    {% if signup_open %}
+      <section class="padel-card signup-banner">
+        <h2>Inscripciones abiertas</h2>
+        <p class="muted">¿Querés anotar tu pareja? Pedile el código al complejo y cargala desde acá. Queda pendiente de confirmación.</p>
+        <a class="btn btn--primary" href="{% url 'public_tournament_signup' tournament.slug %}">Anotá tu pareja</a>
+      </section>
+    {% endif %}
+
     <section class="panel-section">
       <h2>Fixture</h2>
 

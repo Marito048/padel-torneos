@@ -341,6 +341,8 @@ class Tournament(models.Model):
     qualifiers_per_zone = models.PositiveSmallIntegerField("Clasificados por zona", default=2)
     status = models.CharField("Estado", max_length=12, choices=STATUS, default="draft")
     manual_bracket = models.BooleanField("Cruces armados a mano", default=False)
+    registration_code = models.CharField("Código de autoinscripción", max_length=12, blank=True, default="")
+    self_registration_enabled = models.BooleanField("Autoinscripción abierta", default=False)
     courts = models.ManyToManyField(Court, blank=True, verbose_name="Canchas")
 
     class Meta:
@@ -443,6 +445,12 @@ class Registration(models.Model):
     tournament = models.ForeignKey(Tournament, on_delete=models.CASCADE, related_name="registrations")
     team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="registrations")
     status = models.CharField("Estado", max_length=12, choices=STATUS, default="pending")
+    source = models.CharField(
+        "Origen",
+        max_length=12,
+        choices=[("panel", "Panel"), ("public", "Autoinscripción")],
+        default="panel",
+    )
     paid_at = models.DateTimeField("Pagado el", null=True, blank=True)
     created_at = models.DateTimeField("Inscripto el", auto_now_add=True)
 
