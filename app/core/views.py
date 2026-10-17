@@ -333,11 +333,9 @@ def panel_teams(request, slug):
     signup_url = request.build_absolute_uri(
         reverse("public_tournament_signup", kwargs={"slug": tournament.slug})
     )
-    whatsapp_text = quote(
-        f"Anotate al torneo «{tournament.name}» 🎾\n"
-        f"Link: {signup_url}\n"
-        f"Código: {tournament.registration_code or ''}"
-    )
+    whatsapp_link_url = "https://wa.me/?text=" + quote(signup_url)
+    whatsapp_hint_url = "https://wa.me/?text=" + quote("Copiá el siguiente código y anotá tu pareja 👇")
+    whatsapp_code_url = "https://wa.me/?text=" + quote(tournament.registration_code or "")
     context = _panel_context(
         request,
         tournament,
@@ -347,7 +345,9 @@ def panel_teams(request, slug):
         self_registration_enabled=tournament.self_registration_enabled,
         registration_code=tournament.registration_code,
         signup_url=signup_url,
-        whatsapp_share_url=f"https://wa.me/?text={whatsapp_text}",
+        whatsapp_link_url=whatsapp_link_url,
+        whatsapp_hint_url=whatsapp_hint_url,
+        whatsapp_code_url=whatsapp_code_url,
         available_players=players_service.available_players(tournament),
         used_players_count=len(players_service.player_ids_in_tournament(tournament)),
         known_players_total=Player.objects.filter(active=True).count(),
@@ -1818,10 +1818,12 @@ def public_tournament_signup(request, slug):
     if request.method == "POST":
         entered = {
             "code": (request.POST.get("code") or "").strip().upper(),
-            "player1_name": (request.POST.get("player1_name") or "").strip(),
+            "player1_first_name": (request.POST.get("player1_first_name") or "").strip(),
+            "player1_last_name": (request.POST.get("player1_last_name") or "").strip(),
             "player1_gender": request.POST.get("player1_gender", ""),
             "player1_phone": (request.POST.get("player1_phone") or "").strip(),
-            "player2_name": (request.POST.get("player2_name") or "").strip(),
+            "player2_first_name": (request.POST.get("player2_first_name") or "").strip(),
+            "player2_last_name": (request.POST.get("player2_last_name") or "").strip(),
             "player2_gender": request.POST.get("player2_gender", ""),
             "player2_phone": (request.POST.get("player2_phone") or "").strip(),
         }
@@ -1836,18 +1838,26 @@ def public_tournament_signup(request, slug):
         elif entered["code"] != tournament.registration_code:
             _register_signup_failure(request)
             messages.error(request, "El código no es correcto. Pedíselo de nuevo al complejo.")
-        elif not (entered["player1_name"] and entered["player2_name"]):
+        elif not all(
+            entered[key]
+            for key in (
+                "player1_first_name",
+                "player1_last_name",
+                "player2_first_name",
+                "player2_last_name",
+            )
+        ):
             messages.error(request, "Completá el nombre y apellido de los dos jugadores.")
         else:
             try:
                 with transaction.atomic():
                     player1, _ = players_service.resolve_player(
-                        entered["player1_name"],
+                        f"{entered['player1_last_name']}, {entered['player1_first_name']}",
                         gender=entered["player1_gender"],
                         level=tournament.category,
                     )
                     player2, _ = players_service.resolve_player(
-                        entered["player2_name"],
+                        f"{entered['player2_last_name']}, {entered['player2_first_name']}",
                         gender=entered["player2_gender"],
                         level=tournament.category,
                     )

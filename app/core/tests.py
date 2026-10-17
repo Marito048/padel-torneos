@@ -6,6 +6,7 @@ auditables y generación/progresión automática de llaves con descansos.
 """
 
 from unittest.mock import patch
+from urllib.parse import quote
 
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -2997,10 +2998,12 @@ class SelfRegistrationTests(TournamentFixtureMixin, TestCase):
     def signup_payload(self, **overrides):
         payload = {
             "code": self.code,
-            "player1_name": "Gómez, Ana",
+            "player1_first_name": "Ana",
+            "player1_last_name": "Gómez",
             "player1_gender": "F",
             "player1_phone": "341 555 1111",
-            "player2_name": "Ferreyra, Juana",
+            "player2_first_name": "Juana",
+            "player2_last_name": "Ferreyra",
             "player2_gender": "F",
             "player2_phone": "",
         }
@@ -3048,9 +3051,11 @@ class SelfRegistrationTests(TournamentFixtureMixin, TestCase):
         response = self.client.post(
             self.url,
             self.signup_payload(
-                player1_name="Pérez, Juan",
+                player1_first_name="Juan",
+                player1_last_name="Pérez",
                 player1_gender="M",
-                player2_name="Otro Jugador",
+                player2_first_name="Otro",
+                player2_last_name="Jugador",
                 player2_gender="M",
             ),
             follow=True,
@@ -3060,7 +3065,7 @@ class SelfRegistrationTests(TournamentFixtureMixin, TestCase):
         self.assertEqual(Registration.objects.filter(tournament=self.tournament).count(), 1)
 
     def test_signup_requires_both_player_names(self):
-        response = self.client.post(self.url, self.signup_payload(player2_name=""), follow=True)
+        response = self.client.post(self.url, self.signup_payload(player2_last_name=""), follow=True)
         self.assertContains(response, "Completá el nombre y apellido de los dos jugadores")
         self.assertFalse(Registration.objects.filter(tournament=self.tournament).exists())
 
@@ -3108,6 +3113,16 @@ class SelfRegistrationTests(TournamentFixtureMixin, TestCase):
         self.tournament.refresh_from_db()
         self.assertNotEqual(self.tournament.registration_code, old_code)
         self.assertContains(response, self.tournament.registration_code)
+        # Los mensajes de WhatsApp van separados: link solo, indicación y código solo.
+        self.assertContains(response, "1. Enviar link")
+        self.assertContains(response, "2. Enviar indicación")
+        self.assertContains(response, "3. Enviar código")
+        self.assertContains(
+            response, "https://wa.me/?text=" + quote("http://testserver/torneos/codigo/anotarse/")
+        )
+        self.assertContains(
+            response, "https://wa.me/?text=" + quote(self.tournament.registration_code)
+        )
 
         self.client.post("/gestion/codigo/autoinscripcion/desactivar/", follow=True)
         self.tournament.refresh_from_db()

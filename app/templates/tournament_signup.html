@@ -25,7 +25,8 @@
       {% endif %}
       <p class="help">
         Pedile al complejo el código del torneo y completá los datos de los dos jugadores.
-        La pareja queda anotada y pendiente de confirmación del complejo.
+        La pareja queda anotada y pendiente de confirmación del complejo, y se muestra
+        con los apellidos de ambos (por ejemplo «Gómez - Pérez»).
       </p>
       <form method="post" action="{% url 'public_tournament_signup' tournament.slug %}" class="form-grid">
         {% csrf_token %}
@@ -34,9 +35,13 @@
                  autocomplete="off" spellcheck="false" placeholder="Ej: PX7K42QN" style="text-transform: uppercase;">
         </label>
         <h2 class="signup-player-title">Jugador 1</h2>
-        <label>Nombre y apellido
-          <input type="text" name="player1_name" value="{{ entered.player1_name }}" maxlength="130" required
-                 autocomplete="off" placeholder="Ej: Ana Gómez">
+        <label>Nombre
+          <input type="text" name="player1_first_name" value="{{ entered.player1_first_name }}" maxlength="60" required
+                 autocomplete="given-name" placeholder="Ej: Ana">
+        </label>
+        <label>Apellido
+          <input type="text" name="player1_last_name" value="{{ entered.player1_last_name }}" maxlength="60" required
+                 autocomplete="family-name" placeholder="Ej: Gómez">
         </label>
         <label>Género
           <select name="player1_gender">
@@ -48,9 +53,13 @@
                  autocomplete="tel" placeholder="Ej: 341 555 5555">
         </label>
         <h2 class="signup-player-title">Jugador 2</h2>
-        <label>Nombre y apellido
-          <input type="text" name="player2_name" value="{{ entered.player2_name }}" maxlength="130" required
-                 autocomplete="off" placeholder="Ej: Luis Pérez">
+        <label>Nombre
+          <input type="text" name="player2_first_name" value="{{ entered.player2_first_name }}" maxlength="60" required
+                 autocomplete="given-name" placeholder="Ej: Luis">
+        </label>
+        <label>Apellido
+          <input type="text" name="player2_last_name" value="{{ entered.player2_last_name }}" maxlength="60" required
+                 autocomplete="family-name" placeholder="Ej: Pérez">
         </label>
         <label>Género
           <select name="player2_gender">
