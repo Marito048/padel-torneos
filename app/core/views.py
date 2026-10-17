@@ -194,7 +194,10 @@ def tournament_form(request, slug=None):
     if slug:
         tournament = _tournament_or_404(request, slug)
     complexes = Complex.objects.all() if request.user.is_superuser else request.user.complexes.all()
-    if not request.user.is_superuser and not complexes.exists():
+    complexes = list(complexes)
+    # Si el usuario tiene un solo complejo a cargo, se elige solo al crear el torneo.
+    default_complex = complexes[0] if len(complexes) == 1 else None
+    if not request.user.is_superuser and not complexes:
         messages.error(
             request,
             "No tenés complejos asignados. Creá el tuyo desde Configuración general y volvé a intentar.",
@@ -204,6 +207,9 @@ def tournament_form(request, slug=None):
         name = (request.POST.get("name") or "").strip()
         start_date = request.POST.get("start_date") or None
         complex_id = request.POST.get("complex") or None
+        # Valores por defecto al crear: mejor de 3 sets y estado «Inscripciones».
+        default_best_of = 3 if tournament is None else 2
+        default_status = "open" if tournament is None else "draft"
         if not name:
             messages.error(request, "El nombre del torneo es obligatorio.")
         elif not start_date:
@@ -217,7 +223,7 @@ def tournament_form(request, slug=None):
                     elif tournament is not None:
                         complex_obj = tournament.complex
                     else:
-                        complex_obj = None
+                        complex_obj = default_complex
                     defaults = {
                         "complex": complex_obj,
                         "name": name,
@@ -225,10 +231,10 @@ def tournament_form(request, slug=None):
                         "start_date": start_date,
                         "end_date": request.POST.get("end_date") or None,
                         "format_type": request.POST.get("format_type") or "zonas_playoffs",
-                        "best_of_sets": int(request.POST.get("best_of_sets") or 2),
+                        "best_of_sets": int(request.POST.get("best_of_sets") or default_best_of),
                         "teams_per_zone": int(request.POST.get("teams_per_zone") or 3),
                         "qualifiers_per_zone": int(request.POST.get("qualifiers_per_zone") or 2),
-                        "status": request.POST.get("status") or "draft",
+                        "status": request.POST.get("status") or default_status,
                     }
                     if tournament is None:
                         from django.utils.text import slugify
@@ -255,6 +261,9 @@ def tournament_form(request, slug=None):
         {
             "tournament": tournament,
             "complexes": complexes,
+            "default_complex": default_complex,
+            "default_best_of_sets": 3 if tournament is None else tournament.best_of_sets,
+            "default_status": "open" if tournament is None else tournament.status,
             "categories": Tournament.CATEGORY,
             "formats": Tournament.FORMAT,
             "statuses": Tournament.STATUS,

@@ -13,8 +13,9 @@
       <label>Complejo
         <select name="complex" required>
           <option value="">Seleccioná un complejo</option>
-          {% for complex in complexes %}<option value="{{ complex.pk }}">{{ complex.name }}</option>{% endfor %}
+          {% for complex in complexes %}<option value="{{ complex.pk }}"{% if default_complex and complex.pk == default_complex.pk %} selected{% endif %}>{{ complex.name }}</option>{% endfor %}
         </select>
+        {% if default_complex %}<span class="help">Se eligió «{{ default_complex.name }}» porque es el único complejo a tu cargo.</span>{% endif %}
       </label>
     {% endif %}
     <label>Nombre
@@ -45,10 +46,10 @@
     </label>
     <label>Sets al mejor de
       <select name="best_of_sets">
-        <option value="1" {% if tournament.best_of_sets == 1 %}selected{% endif %}>1</option>
-        <option value="2" {% if tournament.best_of_sets == 2 %}selected{% endif %}>2 (super tie-break si van 1-1)</option>
-        <option value="3" {% if tournament.best_of_sets == 3 %}selected{% endif %}>3 (tercer set o super si van 1-1)</option>
-        <option value="5" {% if tournament.best_of_sets == 5 %}selected{% endif %}>5</option>
+        <option value="1" {% if default_best_of_sets == 1 %}selected{% endif %}>1</option>
+        <option value="2" {% if default_best_of_sets == 2 %}selected{% endif %}>2 (super tie-break si van 1-1)</option>
+        <option value="3" {% if default_best_of_sets == 3 %}selected{% endif %}>3 (tercer set o super si van 1-1)</option>
+        <option value="5" {% if default_best_of_sets == 5 %}selected{% endif %}>5</option>
       </select>
     </label>
     <label>Duplas por zona
@@ -60,7 +61,7 @@
     <label>Estado
       <select name="status">
         {% for value, label in statuses %}
-          <option value="{{ value }}" {% if tournament.status == value %}selected{% endif %}>{{ label }}</option>
+          <option value="{{ value }}" {% if default_status == value %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
     </label>

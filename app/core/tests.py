@@ -5,6 +5,8 @@ garantía de base de datos, zonas, partidos, clasificación con desempates
 auditables y generación/progresión automática de llaves con descansos.
 """
 
+import re
+
 from unittest.mock import patch
 from urllib.parse import quote
 
@@ -2360,6 +2362,71 @@ class GeneralSettingsTests(TestCase):
         response = self.client.get("/gestion/nuevo/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Mi Club")
+
+
+class TournamentCreateDefaultsTests(TestCase):
+    """Al crear un torneo: complejo preseleccionado (si hay uno solo), mejor de 3 y estado Inscripciones."""
+
+    def test_single_complex_and_defaults_are_preselected(self):
+        User = get_user_model()
+        user = User.objects.create_user("unico", password="clave-segura-123", is_staff=True)
+        complex_obj = Complex.objects.create(name="Complejo Único", slug="complejo-unico")
+        complex_obj.users.add(user)
+        self.client.force_login(user)
+        response = self.client.get("/gestion/nuevo/")
+        self.assertContains(response, f'value="{complex_obj.pk}" selected')
+        self.assertContains(response, "único complejo a tu cargo")
+        self.assertContains(response, 'value="3" selected')  # mejor de 3 sets
+        self.assertContains(response, 'value="open" selected')  # estado Inscripciones
+
+    def test_defaults_are_used_if_fields_missing(self):
+        User = get_user_model()
+        user = User.objects.create_user("unico2", password="clave-segura-123", is_staff=True)
+        complex_obj = Complex.objects.create(name="Complejo Dos", slug="complejo-dos")
+        complex_obj.users.add(user)
+        self.client.force_login(user)
+        response = self.client.post(
+            "/gestion/nuevo/",
+            {"name": "Torneo Sin Campo", "start_date": timezone.localdate().isoformat()},
+            follow=True,
+        )
+        self.assertContains(response, "Torneo creado")
+        tournament = Tournament.objects.get(name="Torneo Sin Campo")
+        self.assertEqual(tournament.complex_id, complex_obj.pk)
+        self.assertEqual(tournament.best_of_sets, 3)
+        self.assertEqual(tournament.status, "open")
+
+    def test_multiple_complexes_are_not_preselected(self):
+        User = get_user_model()
+        user = User.objects.create_user("doble", password="clave-segura-123", is_staff=True)
+        first = Complex.objects.create(name="Complejo A", slug="complejo-a")
+        second = Complex.objects.create(name="Complejo B", slug="complejo-b")
+        first.users.add(user)
+        second.users.add(user)
+        self.client.force_login(user)
+        html = self.client.get("/gestion/nuevo/").content.decode()
+        select_block = re.search(r'<select name="complex" required>(.*?)</select>', html, re.S).group(1)
+        self.assertNotIn("selected", select_block)
+
+    def test_editing_keeps_saved_values(self):
+        """Al editar se mantienen los valores guardados, no los defaults de creación."""
+        User = get_user_model()
+        user = User.objects.create_user("edita", password="clave-segura-123", is_staff=True)
+        complex_obj = Complex.objects.create(name="Complejo Edit", slug="complejo-edit")
+        complex_obj.users.add(user)
+        tournament = Tournament.objects.create(
+            complex=complex_obj,
+            name="Torneo Edit",
+            slug="torneo-edit",
+            category="primera",
+            start_date=timezone.localdate(),
+            best_of_sets=2,
+            status="running",
+        )
+        self.client.force_login(user)
+        response = self.client.get(f"/gestion/{tournament.slug}/configuracion/")
+        self.assertContains(response, 'value="2" selected')
+        self.assertContains(response, 'value="running" selected')
 
 
 class InvitationFlowTests(TestCase):
