@@ -1,0 +1,83 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% if tournament %}{{ tournament.name }}{% else %}Pádel Server{% endif %}{% endblock %} · Pádel Server</title>
+  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
+</head>
+<body class="padel-page padel-page--panel">
+  <header class="padel-topbar">
+    <div class="padel-brand">
+      <span class="padel-badge">PA</span>
+      <span>{% if tournament %}{{ tournament.name }}{% else %}Pádel Server{% endif %}</span>
+    </div>
+    {% if tournament %}
+      <div class="padel-topbar__meta">
+        {% if tournament.complex %}<span class="chip">{{ tournament.complex.name }}</span>{% endif %}
+        <span class="chip">{{ tournament.get_format_type_display }}</span>
+        <span class="chip chip--{{ tournament.status }}">{{ tournament.get_status_display }}</span>
+      </div>
+      <div class="padel-actions">
+        {% include "panel/_topbar_actions.html" %}
+      </div>
+      <details class="panel-collapse panel-collapse--actions">
+        <summary class="panel-collapse__toggle">Menú</summary>
+        <div class="panel-collapse__body">
+          {% include "panel/_topbar_actions.html" %}
+        </div>
+      </details>
+    {% else %}
+      <div class="padel-actions">
+        {% include "panel/_topbar_actions_simple.html" %}
+      </div>
+      <details class="panel-collapse panel-collapse--actions">
+        <summary class="panel-collapse__toggle">Menú</summary>
+        <div class="panel-collapse__body">
+          {% include "panel/_topbar_actions_simple.html" %}
+        </div>
+      </details>
+    {% endif %}
+  </header>
+
+  {% if tournament and nav %}
+    <nav class="panel-nav" aria-label="Secciones del torneo">
+      {% for key, label, url in nav %}
+        <a href="{{ url }}" class="{% if section == key %}active{% endif %}"{% if section == key %} aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <details class="panel-collapse panel-collapse--sections">
+      <summary class="panel-collapse__toggle">
+        <span class="panel-collapse__current">{% for key, label, url in nav %}{% if section == key %}{{ label }}{% endif %}{% endfor %}</span>
+      </summary>
+      <div class="panel-collapse__body panel-collapse__body--sections">
+        {% for key, label, url in nav %}
+          <a href="{{ url }}" class="panel-collapse__link{% if section == key %} active{% endif %}"{% if section == key %} aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+      </div>
+    </details>
+  {% endif %}
+
+  <main class="padel-shell">
+    {% if messages %}
+      <div class="messages" role="status" aria-live="polite">
+        {% for message in messages %}
+          <div class="alert alert--{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if requires_password_change %}
+      <div class="alert alert--info"
+           style="display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; justify-content: space-between;">
+        <span><strong>Contraseña temporal:</strong> te la entregó la administración. Cambiala por una tuya.</span>
+        <a class="btn btn--primary btn--sm" href="{% url 'account_change_password' %}">Cambiar contraseña</a>
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{% static 'core/panel.js' %}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

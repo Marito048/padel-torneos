@@ -1,0 +1,56 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ tournament.name }} · Pádel Server</title>
+  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
+</head>
+<body class="padel-page">
+  <main class="padel-shell">
+    <header class="padel-topbar">
+      <div class="padel-brand">
+        <span class="padel-badge">PA</span>
+        <span>{{ tournament.name }}</span>
+      </div>
+      <div class="padel-actions" style="margin: 0;">
+        <a class="btn btn--secondary" href="{% url 'tournament_exit' %}">Cambiar torneo</a>
+      </div>
+    </header>
+
+    <section class="padel-card padel-card--green">
+      <h1>Panel del torneo</h1>
+      <p>Categoría {{ tournament.get_category_display }} · Estado {{ tournament.get_status_display }} · Inicio {{ tournament.start_date }}</p>
+      <p>Formato: mejor de {{ tournament.best_of_sets }} sets · {{ tournament.teams_per_zone }} duplas por zona · {{ tournament.qualifiers_per_zone }} clasificados por zona.</p>
+    </section>
+
+    <section class="padel-grid" style="margin-top: 1.2rem;">
+      <article class="padel-card">
+        <h3>Resumen</h3>
+        <p>Entrá a las secciones del torneo desde aquí.</p>
+      </article>
+      <article class="padel-card">
+        <h3>Duplas</h3>
+        <p>Crear y administrar duplas del torneo.</p>
+        <a class="btn btn--primary" href="/admin/core/team/?tournament={{ tournament.pk }}">Abrir duplas</a>
+      </article>
+      <article class="padel-card">
+        <h3>Zonas</h3>
+        <p>Administrar zonas y sus duplas.</p>
+        <a class="btn btn--primary" href="/admin/core/zone/?tournament={{ tournament.pk }}">Abrir zonas</a>
+      </article>
+      <article class="padel-card">
+        <h3>Partidos</h3>
+        <p>Cargar resultados y ver partidos de grupo o eliminatoria.</p>
+        <a class="btn btn--primary" href="/admin/core/match/?tournament={{ tournament.pk }}">Abrir partidos</a>
+      </article>
+      <article class="padel-card">
+        <h3>Inscripciones</h3>
+        <p>Gestionar pagos y confirmaciones.</p>
+        <a class="btn btn--primary" href="/admin/core/registration/?tournament={{ tournament.pk }}">Abrir inscripciones</a>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

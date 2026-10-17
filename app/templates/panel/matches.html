@@ -1,0 +1,103 @@
+{% extends "panel/base_panel.html" %}
+{% load static %}
+{% block title %}Partidos · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Partidos</h1>
+  <p class="muted">Los partidos de zona se generan al distribuir las parejas. Los eliminatorios se crean automáticamente con las llaves.</p>
+</section>
+
+{% if zone_map %}
+  <section class="padel-card">
+    <h2>Agregar partido de zona</h2>
+    <form method="post" action="{% url 'panel_match_create' tournament.slug %}" class="form-grid" id="match-create-form">
+      {% csrf_token %}
+      <label>Zona
+        <select name="zone" id="id_zone" required>
+          <option value="">Seleccioná una zona</option>
+          {% for zone in zone_map %}<option value="{{ zone.id }}">{{ zone.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Pareja A
+        <select name="team1" id="id_team1" required><option value="">Elegí primero la zona</option></select>
+      </label>
+      <label>Pareja B
+        <select name="team2" id="id_team2" required><option value="">Elegí primero la zona</option></select>
+      </label>
+      <div class="form-actions">
+        <button class="btn btn--primary" type="submit">Agregar partido</button>
+      </div>
+    </form>
+  </section>
+{% endif %}
+
+<section class="panel-section">
+  <h2>Fase de zonas</h2>
+  {% for row in group_rows %}
+    <h3>Zona {{ row.zone.name }}</h3>
+    <div class="match-list">
+      {% for match in row.matches %}
+        <article class="match-row">
+          <div class="scoreboard">
+            <span class="team {% if match.winner_id == match.team1_id %}winner{% endif %}">{{ match.team1|default:"Por definir" }}</span>
+            <span class="vs">vs</span>
+            <span class="team {% if match.winner_id == match.team2_id %}winner{% endif %}">{{ match.team2|default:"Por definir" }}</span>
+          </div>
+          <div class="match-row__meta">
+            {% if match.score %}<span class="score">{{ match.score }}</span>{% endif %}
+            {% if match.is_walkover %}<span class="status-pill status-pill--done">Walkover</span>
+            {% elif match.winner_id %}<span class="status-pill status-pill--done">Finalizado</span>
+            {% else %}<span class="status-pill status-pill--pending">Pendiente</span>{% endif %}
+            {% if not match.winner_id and not match.is_walkover %}
+              <a class="btn btn--primary btn--xs" href="{% url 'panel_results' tournament.slug %}">Cargar resultado</a>
+            {% endif %}
+            {% if not match.is_bye and not match.winner_id and not match.is_walkover %}
+              <form method="post" action="{% url 'panel_match_delete' tournament.slug match.pk %}"
+                    data-confirm="¿Eliminar este partido sin resultado?">
+                {% csrf_token %}
+                <button class="btn btn--secondary btn--xs" type="submit">Eliminar</button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% empty %}
+        <p class="alert alert--info">La zona no tiene partidos programados.</p>
+      {% endfor %}
+    </div>
+  {% empty %}
+    <p class="alert alert--info">Todavía no hay zonas generadas.</p>
+  {% endfor %}
+</section>
+
+{% if playoff_rows %}
+  <section class="panel-section">
+    <h2>Eliminatorias</h2>
+    <div class="bracket">
+      {% for round in playoff_rows %}
+        <div class="bracket-round">
+          <h3>{{ round.label }}</h3>
+          {% for match in round.matches %}
+            <div class="bracket-match {% if match.is_bye %}bracket-match--bye{% endif %}">
+              {% if match.is_bye %}
+                <p class="bracket-note">Descanso (bye) · posición {{ match.slot }}</p>
+                <p class="team winner">{{ match.team1|default:match.team2 }}</p>
+              {% else %}
+                <p class="bracket-note">Partido {{ match.slot }}</p>
+                <p class="team {% if match.winner_id == match.team1_id %}winner{% endif %}">{{ match.team1|default:"Por definir" }}</p>
+                <p class="team {% if match.winner_id == match.team2_id %}winner{% endif %}">{{ match.team2|default:"Por definir" }}</p>
+                {% if match.score %}<p class="score">{{ match.score }}</p>{% endif %}
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+    <p><a class="btn btn--secondary" href="{% url 'panel_bracket' tournament.slug %}">Ver cuadro completo</a></p>
+  </section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ zone_map|json_script:"zone-map-data" }}
+<script src="{% static 'core/matches.js' %}"></script>
+{% endblock %}

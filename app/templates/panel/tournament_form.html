@@ -1,0 +1,89 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}{% if tournament %}Configuración{% else %}Nuevo torneo{% endif %} · Pádel Server{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>{% if tournament %}Configuración de {{ tournament.name }}{% else %}Crear torneo{% endif %}</h1>
+  <p class="muted">La configuración se guarda una sola vez y se recupera al volver a ingresar.</p>
+</section>
+
+<section class="padel-card">
+  <form method="post" class="form-grid form-grid--wide">
+    {% csrf_token %}
+    {% if not tournament %}
+      <label>Complejo
+        <select name="complex" required>
+          <option value="">Seleccioná un complejo</option>
+          {% for complex in complexes %}<option value="{{ complex.pk }}">{{ complex.name }}</option>{% endfor %}
+        </select>
+      </label>
+    {% endif %}
+    <label>Nombre
+      <input type="text" name="name" maxlength="120" required value="{{ tournament.name|default:'' }}">
+    </label>
+    <label>Identificador (slug)
+      <input type="text" name="slug" maxlength="60" value="{{ tournament.slug|default:'' }}" {% if tournament %}readonly{% endif %}>
+    </label>
+    <label>Categoría
+      <select name="category">
+        {% for value, label in categories %}
+          <option value="{{ value }}" {% if tournament.category == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Tipo de torneo
+      <select name="format_type">
+        {% for value, label in formats %}
+          <option value="{{ value }}" {% if tournament.format_type == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Inicio
+      <input type="date" name="start_date" required value="{{ tournament.start_date|date:'Y-m-d' }}">
+    </label>
+    <label>Fin (opcional)
+      <input type="date" name="end_date" value="{{ tournament.end_date|date:'Y-m-d' }}">
+    </label>
+    <label>Sets al mejor de
+      <select name="best_of_sets">
+        <option value="1" {% if tournament.best_of_sets == 1 %}selected{% endif %}>1</option>
+        <option value="2" {% if tournament.best_of_sets == 2 %}selected{% endif %}>2 (super tie-break si van 1-1)</option>
+        <option value="3" {% if tournament.best_of_sets == 3 %}selected{% endif %}>3 (tercer set o super si van 1-1)</option>
+        <option value="5" {% if tournament.best_of_sets == 5 %}selected{% endif %}>5</option>
+      </select>
+    </label>
+    <label>Duplas por zona
+      <input type="number" name="teams_per_zone" min="2" max="6" value="{{ tournament.teams_per_zone|default:3 }}">
+    </label>
+    <label>Clasificados por zona
+      <input type="number" name="qualifiers_per_zone" min="1" max="4" value="{{ tournament.qualifiers_per_zone|default:2 }}">
+    </label>
+    <label>Estado
+      <select name="status">
+        {% for value, label in statuses %}
+          <option value="{{ value }}" {% if tournament.status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--primary" type="submit">{% if tournament %}Guardar configuración{% else %}Crear torneo{% endif %}</button>
+      <a class="btn btn--secondary" href="{% if tournament %}{% url 'tournament_manage' tournament.slug %}{% else %}{% url 'tournament_select' %}{% endif %}">Cancelar</a>
+    </div>
+  </form>
+</section>
+
+{% if tournament %}
+<section class="padel-card padel-card--danger">
+  <h2>Eliminar torneo</h2>
+  <p class="muted">
+    Se borran las zonas, los partidos, los resultados y las llaves de «{{ tournament.name }}».
+    Las parejas y los jugadores quedan guardados en la base para volver a usarlos en otro torneo.
+    Esta acción no se puede deshacer.
+  </p>
+  <form method="post" action="{% url 'panel_tournament_delete' tournament.slug %}"
+        data-confirm="¿Eliminar definitivamente el torneo «{{ tournament.name }}»? Se borran zonas, partidos, resultados y llaves. No se puede deshacer.">
+    {% csrf_token %}
+    <button class="btn btn--danger" type="submit">Eliminar torneo</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

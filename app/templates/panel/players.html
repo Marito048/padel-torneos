@@ -1,0 +1,125 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Jugadores · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Jugadores</h1>
+  <p class="muted">
+    {{ total_players }} en la base · {{ active_players }} activos ·
+    los jugadores quedan guardados y se reutilizan en cualquier torneo.
+  </p>
+</section>
+
+<section class="padel-card">
+  <h2>Buscar jugador</h2>
+  <form method="get" class="form-grid">
+    <label>Nombre o apellido
+      <input type="text" name="q" value="{{ query }}" placeholder="Ej: Pérez" autocomplete="off">
+    </label>
+    <label>Estado
+      <select name="estado">
+        <option value="todos"{% if status == "todos" %} selected{% endif %}>Todos</option>
+        <option value="activos"{% if status == "activos" %} selected{% endif %}>Solo activos</option>
+        <option value="inactivos"{% if status == "inactivos" %} selected{% endif %}>Solo inactivos</option>
+      </select>
+    </label>
+    <label>Categoría
+      <select name="nivel">
+        <option value="todos"{% if nivel == "todos" %} selected{% endif %}>Todas</option>
+        {% for value, label in levels %}<option value="{{ value }}"{% if nivel == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--primary" type="submit">Buscar</button>
+      <a class="btn btn--secondary" href="{% url 'panel_players' tournament.slug %}">Limpiar</a>
+    </div>
+  </form>
+</section>
+
+<section class="padel-card">
+  <h2>Agregar jugador</h2>
+  <form method="post" action="{% url 'panel_player_create' tournament.slug %}" class="form-grid">
+    {% csrf_token %}
+    <label>Nombre
+      <input type="text" name="first_name" maxlength="60" required placeholder="Ej: Juan">
+    </label>
+    <label>Apellido
+      <input type="text" name="last_name" maxlength="60" required placeholder="Ej: Pérez">
+    </label>
+    <label>Género
+      <select name="gender">
+        {% for value, label in genders %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Nivel
+      <select name="level">
+        {% for value, label in levels %}<option value="{{ value }}"{% if value == "principiante" %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <details class="new-player-data">
+      <summary>Datos de contacto (opcional)</summary>
+      <div class="form-grid">
+        <label>Teléfono
+          <input type="text" name="phone" maxlength="40" placeholder="Ej: 11 5555 5555">
+        </label>
+        <label>Email
+          <input type="email" name="email" placeholder="Ej: juan@correo.com">
+        </label>
+      </div>
+    </details>
+    <div class="form-actions">
+      <button class="btn btn--primary" type="submit">Guardar jugador</button>
+    </div>
+  </form>
+  <p class="help">
+    Si el nombre ya existe en la base, el sistema lo avisa para que uses la ficha guardada.
+    ¿Quedó cargado dos veces? Entrá a la ficha duplicada y usá «Unificar ficha duplicada».
+  </p>
+</section>
+
+<section class="panel-section">
+  <h2>Listado ({{ rows|length }})</h2>
+  {% if rows %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Jugador</th>
+          <th>Género</th>
+          <th>Nivel</th>
+          <th>Contacto</th>
+          <th>Torneos</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td><a href="{% url 'panel_player_edit' tournament.slug row.player.pk %}">{{ row.player }}</a></td>
+            <td>{{ row.player.get_gender_display }}</td>
+            <td>{{ row.player.get_level_display }}</td>
+            <td>
+              {% if row.player.phone or row.player.email %}
+                {{ row.player.phone }}{% if row.player.phone and row.player.email %} · {% endif %}{{ row.player.email }}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>{{ row.tournaments }}</td>
+            <td>
+              {% if row.player.active %}
+                <span class="chip chip--running">Activo</span>
+              {% else %}
+                <span class="chip chip--draft">Inactivo</span>
+              {% endif %}
+              {% if row.in_tournament %}<span class="chip chip--open">En este torneo</span>{% endif %}
+            </td>
+            <td><a class="btn btn--secondary btn--sm" href="{% url 'panel_player_edit' tournament.slug row.player.pk %}">Editar</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="alert alert--info">No hay jugadores que coincidan con la búsqueda.</p>
+  {% endif %}
+</section>
+{% endblock %}

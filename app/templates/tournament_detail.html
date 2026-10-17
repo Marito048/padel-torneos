@@ -1,0 +1,113 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ tournament.name }} · Pádel Server</title>
+  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
+</head>
+<body class="padel-page">
+  <main class="padel-shell">
+    <header class="padel-topbar">
+      <div class="padel-brand"><span class="padel-badge">PA</span><span>{{ tournament.name }}</span></div>
+      <div class="padel-topbar__meta">
+        {% if tournament.complex %}<span class="chip">{{ tournament.complex.name }}</span>{% endif %}
+        <span class="chip chip--{{ tournament.status }}">{{ tournament.get_status_display }}</span>
+      </div>
+      <div class="padel-actions">
+        <a class="btn btn--secondary btn--sm" href="{% url 'public_tournaments' %}">Todos los torneos</a>
+        <a class="btn btn--primary btn--sm" href="{% url 'tournament_choose' tournament.slug %}">Administrar</a>
+      </div>
+    </header>
+
+    <section class="panel-section">
+      <h1>{{ tournament.name }}</h1>
+      <p class="muted">
+        {{ tournament.get_category_display }} · {{ tournament.get_format_type_display }}
+        · Inicio {{ tournament.start_date }}{% if tournament.end_date %} · Fin {{ tournament.end_date }}{% endif %}
+        · Mejor de {{ tournament.best_of_sets }} sets
+      </p>
+    </section>
+
+    {% for row in zones %}
+      <section class="padel-card">
+        <header class="zone-card__header">
+          <h2>Zona {{ row.zone.name }}</h2>
+          {% if row.official %}<span class="status-pill status-pill--done">Oficial</span>
+          {% else %}<span class="status-pill status-pill--running">Provisional</span>{% endif %}
+        </header>
+        <table class="data-table">
+          <thead>
+            <tr><th>#</th><th>Dupla</th><th>PJ</th><th>PG</th><th>PP</th><th>Pts</th><th>Sets +/-</th><th>Games +/-</th></tr>
+          </thead>
+          <tbody>
+            {% for standing in row.standings %}
+              <tr class="{% if forloop.counter <= tournament.qualifiers_per_zone %}qualified{% endif %}">
+                <td>{{ standing.position }}</td>
+                <td>{{ standing.team }}</td>
+                <td>{{ standing.played }}</td>
+                <td>{{ standing.won }}</td>
+                <td>{{ standing.lost }}</td>
+                <td><strong>{{ standing.points }}</strong></td>
+                <td>{{ standing.set_diff }}</td>
+                <td>{{ standing.game_diff }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% empty %}
+      <p class="alert alert--info">El torneo todavía no tiene zonas publicadas.</p>
+    {% endfor %}
+
+    <section class="panel-section">
+      <h2>Partidos</h2>
+      <div class="match-list">
+        {% for match in matches %}
+          {% if not match.is_bye %}
+            <article class="match-row">
+              <div class="scoreboard">
+                <span class="team {% if match.winner_id == match.team1_id %}winner{% endif %}">{{ match.team1|default:"Por definir" }}</span>
+                <span class="vs">vs</span>
+                <span class="team {% if match.winner_id == match.team2_id %}winner{% endif %}">{{ match.team2|default:"Por definir" }}</span>
+              </div>
+              <div class="match-row__meta">
+                <span class="status-pill status-pill--running">{% if match.stage == "group" %}Zona {{ match.zone.name }}{% else %}{{ match.display_stage }} · partido {{ match.slot }}{% endif %}</span>
+                {% if match.score %}<span class="score">{{ match.score }}</span>{% endif %}
+                {% if match.is_walkover %}<span class="status-pill status-pill--done">Walkover</span>{% endif %}
+              </div>
+            </article>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+
+    {% if rounds %}
+      <section class="panel-section">
+        <h2>Llaves eliminatorias</h2>
+        <div class="bracket">
+          {% for round in rounds %}
+            <div class="bracket-round">
+              <h3>{{ round.label }}</h3>
+              {% for match in round.matches %}
+                <article class="bracket-match {% if match.is_bye %}bracket-match--bye{% endif %}">
+                  {% if match.is_bye %}
+                    <p class="bracket-note">Descanso (bye) · posición {{ match.slot }}</p>
+                    <p class="team winner">{{ match.team1|default:match.team2 }}</p>
+                  {% else %}
+                    <p class="bracket-note">Partido {{ match.slot }}</p>
+                    <p class="team {% if match.winner_id == match.team1_id %}winner{% endif %}">{{ match.team1|default:"Por definir" }}</p>
+                    <p class="team {% if match.winner_id == match.team2_id %}winner{% endif %}">{{ match.team2|default:"Por definir" }}</p>
+                    {% if match.score %}<p class="score">{{ match.score }}</p>{% endif %}
+                  {% endif %}
+                </article>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </main>
+</body>
+</html>

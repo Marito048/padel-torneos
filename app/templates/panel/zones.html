@@ -1,0 +1,78 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Zonas · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Zonas</h1>
+  <p class="muted">Configuración: {{ tournament.teams_per_zone }} duplas por zona · clasifican {{ tournament.qualifiers_per_zone }} por zona.</p>
+  <div class="inline-form">
+    {% if teams_without_zone %}
+      <form method="post" action="{% url 'panel_zones_generate' tournament.slug %}"
+            data-confirm="Se distribuirán todas las parejas sin zona en grupos de {{ tournament.teams_per_zone }}. ¿Continuar?">
+        {% csrf_token %}
+        <button class="btn btn--accent" type="submit">Generar zonas automáticamente ({{ teams_without_zone|length }} sin zona)</button>
+      </form>
+    {% endif %}
+    {% if can_build_zones %}
+      <a class="btn btn--secondary" href="{% url 'panel_zones_manual' tournament.slug %}">Armar zonas a mano</a>
+    {% endif %}
+  </div>
+</section>
+
+{% if zone_rows %}
+  <div class="card-list card-list--wide">
+    {% for row in zone_rows %}
+      <article class="padel-card zone-card">
+        <header class="zone-card__header">
+          <h2>Zona {{ row.zone.name }}</h2>
+          {% if row.complete %}
+            <span class="status-pill status-pill--done">Completa</span>
+          {% else %}
+            <span class="status-pill status-pill--pending">{{ row.pending }} pendientes</span>
+          {% endif %}
+        </header>
+        <table class="data-table">
+          <thead>
+            <tr><th>#</th><th>Dupla</th><th>PJ</th><th>PG</th><th>PP</th><th>Pts</th><th>Dif. sets</th><th>Dif. games</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for standing in row.standings %}
+              <tr>
+                <td>{{ standing.position }}</td>
+                <td>{{ standing.team }}</td>
+                <td>{{ standing.played }}</td>
+                <td>{{ standing.won }}</td>
+                <td>{{ standing.lost }}</td>
+                <td><strong>{{ standing.points }}</strong></td>
+                <td>{{ standing.set_diff }}</td>
+                <td>{{ standing.game_diff }}</td>
+                <td>
+                  <form method="post" action="{% url 'panel_zone_remove_team' tournament.slug row.zone.pk standing.team.pk %}"
+                        data-confirm="¿Quitar esta pareja de la zona?">
+                    {% csrf_token %}
+                    <button class="btn btn--secondary btn--xs" type="submit">Quitar</button>
+                  </form>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="9">Zona sin parejas.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if teams_without_zone %}
+          <form method="post" action="{% url 'panel_zone_assign' tournament.slug %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="zone" value="{{ row.zone.pk }}">
+            <select name="team" required>
+              <option value="">Agregar pareja a esta zona…</option>
+              {% for team in teams_without_zone %}<option value="{{ team.pk }}">{{ team }}</option>{% endfor %}
+            </select>
+            <button class="btn btn--primary btn--sm" type="submit">Asignar</button>
+          </form>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="alert alert--info">Todavía no hay zonas. Inscribí parejas y usá «Generar zonas automáticamente» o «Armar zonas a mano».</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Clasificación · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Clasificación</h1>
+  <p class="muted">Criterios: puntos, diferencia de sets y diferencia de games. Si persiste el empate, sorteo reproducible y auditado.</p>
+</section>
+
+{% for row in rows %}
+  <section class="padel-card">
+    <header class="zone-card__header">
+      <h2>Zona {{ row.zone.name }}</h2>
+      {% if row.official %}
+        <span class="status-pill status-pill--done">Oficial</span>
+      {% else %}
+        <span class="status-pill status-pill--running">Provisional</span>
+      {% endif %}
+    </header>
+    <table class="data-table">
+      <thead>
+        <tr><th>#</th><th>Dupla</th><th>PJ</th><th>PG</th><th>PP</th><th>Pts</th><th>Sets +/-</th><th>Games +/-</th></tr>
+      </thead>
+      <tbody>
+        {% for standing in row.standings %}
+          <tr class="{% if forloop.counter <= tournament.qualifiers_per_zone %}qualified{% endif %}">
+            <td>{{ standing.position }}</td>
+            <td>{{ standing.team }}</td>
+            <td>{{ standing.played }}</td>
+            <td>{{ standing.won }}</td>
+            <td>{{ standing.lost }}</td>
+            <td><strong>{{ standing.points }}</strong></td>
+            <td>{{ standing.set_diff }}</td>
+            <td>{{ standing.game_diff }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% empty %}
+  <p class="alert alert--info">Todavía no hay zonas para clasificar.</p>
+{% endfor %}
+
+{% if qualified %}
+  <section class="panel-section">
+    <h2>Orden de clasificados a la llave</h2>
+    <ol class="qualified-list">
+      {% for item in qualified %}
+        <li><strong>{{ item.team }}</strong> <span class="muted">· Zona {{ item.zone.name }} ({{ item.zone_position }}°) · {{ item.points }} pts</span></li>
+      {% endfor %}
+    </ol>
+  </section>
+{% elif standings_error %}
+  <p class="alert alert--info">{{ standings_error }}</p>
+{% endif %}
+{% endblock %}

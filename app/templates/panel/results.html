@@ -1,0 +1,132 @@
+{% extends "panel/base_panel.html" %}
+{% load static %}
+{% block title %}Resultados · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Resultados</h1>
+  <p class="muted">
+    Cargá el marcador (siempre de la primera pareja hacia la segunda; el super tie-break
+    va entre corchetes, ej. [11-9]). El ganador se determina server-side según el reglamento
+    del torneo (al mejor de {{ tournament.best_of_sets }} sets); si elegís una pareja
+    ganadora, el marcador se acomoda a ella.
+    {% if waiting_total %}
+      {{ waiting_total }} cruce{{ waiting_total|pluralize:"s" }} de llave se habilita{{ waiting_total|pluralize:"n" }}
+      automáticamente cuando se definan los partidos anteriores.
+    {% endif %}
+  </p>
+</section>
+
+<section class="panel-section">
+  <h2>Partidos pendientes ({{ pending_total }})</h2>
+  {% for group in pending_groups %}
+    <h3 class="pending-group__title">{{ group.label }} <span class="muted">· {{ group.rows|length }} partido{{ group.rows|length|pluralize:"s" }}</span></h3>
+    {% for row in group.rows %}
+      {% with match=row.match %}
+      <article class="padel-card result-card">
+        <header class="result-card__header">
+          <span class="status-pill status-pill--pending">
+            {% if match.stage == "group" %}Zona {{ match.zone.name }}{% else %}{{ match.display_stage }} · partido {{ match.slot }}{% endif %}
+          </span>
+        </header>
+        <div class="scoreboard">
+          <span class="team">{{ match.team1|default:"Por definir" }}</span>
+          <span class="vs">vs</span>
+          <span class="team">{{ match.team2|default:"Por definir" }}</span>
+        </div>
+        {% if row.needs %}
+          <div class="needs">
+            <p class="needs__title">Se habilita cuando se definan:</p>
+            <ul>
+              {% for need in row.needs %}
+                {% if need.defined %}
+                  <li class="done">✔ {{ need.label }}: <strong>{{ need.winner }}</strong></li>
+                {% else %}
+                  <li class="pending">○ {{ need.label }}: pendiente</li>
+                {% endif %}
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+        {% if match.team1_id and match.team2_id %}
+          <form method="post" action="{% url 'panel_result_register' tournament.slug match.pk %}" class="result-form">
+            {% csrf_token %}
+            <label>Marcador
+              <input type="text" name="score" placeholder="6-4 6-3" aria-label="Marcador del partido">
+            </label>
+            <label>Ganador (opcional: si lo elegís, el marcador se acomoda a esa pareja)
+              <select name="winner">
+                <option value="">Automático</option>
+                <option value="{{ match.team1_id }}">{{ match.team1 }}</option>
+                <option value="{{ match.team2_id }}">{{ match.team2 }}</option>
+              </select>
+            </label>
+            <details class="walkover">
+              <summary>Registrar walkover</summary>
+              <label class="checkbox">
+                <input type="checkbox" name="is_walkover" value="1"> Es walkover (sin sets ficticios)
+              </label>
+              <label>Motivo obligatorio
+                <input type="text" name="walkover_reason" placeholder="Ej: lesión, ausencia">
+              </label>
+            </details>
+            <div class="form-actions">
+              <button class="btn btn--primary" type="submit">Guardar resultado</button>
+            </div>
+          </form>
+        {% else %}
+          <p class="alert alert--info">Cargá los partidos anteriores y este cruce se completa solo.</p>
+        {% endif %}
+      </article>
+      {% endwith %}
+    {% endfor %}
+  {% empty %}
+    <p class="alert alert--info">No hay partidos pendientes. ¡Todo jugado!</p>
+  {% endfor %}
+</section>
+
+<section class="panel-section">
+  <h2>Últimos resultados</h2>
+  {% for match in played %}
+    <article class="padel-card result-card result-card--played">
+      <header class="result-card__header">
+        <span class="status-pill status-pill--done">
+          {% if match.stage == "group" %}Zona {{ match.zone.name }}{% else %}{{ match.display_stage }} · partido {{ match.slot }}{% endif %}
+        </span>
+        {% if match.is_walkover %}<span class="status-pill status-pill--running">Walkover</span>{% endif %}
+      </header>
+      <div class="scoreboard">
+        <span class="team {% if match.winner_id == match.team1_id %}winner{% endif %}">{{ match.team1 }}</span>
+        <span class="score">{{ match.score|default:"—" }}</span>
+        <span class="team {% if match.winner_id == match.team2_id %}winner{% endif %}">{{ match.team2 }}</span>
+      </div>
+      <p class="muted">
+        Ganador: {{ match.winner }}
+        {% if match.is_walkover %} · Walkover: {{ match.walkover_reason }}{% endif %}
+        {% if match.recorded_by %} · Cargado por {{ match.recorded_by.get_username }}{% if match.recorded_at %} el {{ match.recorded_at|date:"d/m/Y H:i" }}{% endif %}{% endif %}
+      </p>
+      <details>
+        <summary>Corregir resultado</summary>
+        <form method="post" action="{% url 'panel_result_register' tournament.slug match.pk %}" class="result-form">
+          {% csrf_token %}
+          <label>Nuevo marcador
+            <input type="text" name="score" value="{{ match.score }}" placeholder="6-4 6-3">
+          </label>
+          <label>Nuevo ganador (opcional: si lo elegís, el marcador se acomoda)
+            <select name="winner">
+              <option value="">Automático</option>
+              <option value="{{ match.team1_id }}">{{ match.team1 }}</option>
+              <option value="{{ match.team2_id }}">{{ match.team2 }}</option>
+            </select>
+          </label>
+          <div class="form-actions">
+            <button class="btn btn--secondary" type="submit">Guardar corrección</button>
+          </div>
+          <p class="help">Si la llave tiene resultados dependientes, el sistema bloquea la corrección y te indica qué revisar.</p>
+        </form>
+      </details>
+    </article>
+  {% empty %}
+    <p class="alert alert--info">Todavía no hay resultados cargados.</p>
+  {% endfor %}
+</section>
+{% endblock %}

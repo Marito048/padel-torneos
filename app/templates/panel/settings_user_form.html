@@ -1,0 +1,115 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Usuario {{ account.username }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Usuario «{{ account.username }}»</h1>
+  <p class="muted">
+    {% if account.is_superuser %}<span class="chip chip--running">Administrador general</span>{% endif %}
+    {% if account.is_staff %}<span class="chip chip--running">Acceso al panel</span>{% endif %}
+    {% if not account.is_active %}<span class="chip chip--draft">Inactivo</span>{% endif %}
+    {% if is_self %}<span class="chip chip--open">Vos</span>{% endif %}
+  </p>
+</section>
+
+<form method="post">
+  {% csrf_token %}
+  <section class="padel-card">
+    <h2>Datos</h2>
+    <div class="form-grid">
+      <label>Nombre de usuario
+        <input type="text" name="username" maxlength="150" required value="{{ account.username }}" autocomplete="off">
+      </label>
+      <label>Nombre
+        <input type="text" name="first_name" maxlength="150" value="{{ account.first_name }}" autocomplete="off">
+      </label>
+      <label>Apellido
+        <input type="text" name="last_name" maxlength="150" value="{{ account.last_name }}" autocomplete="off">
+      </label>
+      <label>Email
+        <input type="email" name="email" value="{{ account.email }}">
+      </label>
+    </div>
+  </section>
+
+  <section class="padel-card">
+    <h2>Cambiar contraseña</h2>
+    <p class="help">Dejá los campos vacíos para conservar la contraseña actual.</p>
+    <div class="form-grid">
+      <label>Nueva contraseña
+        <input type="password" name="password" minlength="8" autocomplete="new-password">
+      </label>
+      <label>Repetir contraseña
+        <input type="password" name="password2" minlength="8" autocomplete="new-password">
+      </label>
+      {% if not is_self %}
+        <label>
+          <span>Enviar los datos por email</span>
+          <span class="check-field">
+            <input type="checkbox" name="notify_email" value="1">
+            Si cargás una contraseña nueva, le mandamos usuario y contraseña a su email
+          </span>
+        </label>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="padel-card">
+    <h2>Acceso</h2>
+    {% if is_self %}
+      <p class="help">
+        No podés desactivar tu propio usuario ni quitarte permisos.
+        Si necesitás cambiar tus complejos, pedile a un administrador general.
+      </p>
+      <p>
+        {% if account.is_superuser %}<span class="chip chip--running">Administrador general</span>{% else %}<span class="chip chip--running">Acceso al panel</span>{% endif %}
+        {% for complex in account.complexes.all %}<span class="chip">{{ complex.name }}</span> {% endfor %}
+      </p>
+    {% else %}
+      <div class="form-grid">
+        <label>
+          <span>Estado</span>
+          <span class="check-field">
+            <input type="checkbox" name="is_active" value="1"{% if account.is_active %} checked{% endif %}>
+            Usuario activo (puede ingresar)
+          </span>
+        </label>
+        <label>
+          <span>Acceso al panel</span>
+          <span class="check-field">
+            <input type="checkbox" name="is_staff" value="1"{% if account.is_staff %} checked{% endif %}>
+            Puede gestionar los torneos de sus complejos
+          </span>
+        </label>
+        {% if can_grant_superuser %}
+          <label>
+            <span>Administrador general</span>
+            <span class="check-field">
+              <input type="checkbox" name="is_superuser" value="1"{% if account.is_superuser %} checked{% endif %}>
+              Acceso total a todos los complejos
+            </span>
+          </label>
+        {% endif %}
+      </div>
+      {% if complexes %}
+        <fieldset class="check-group">
+          <legend>Complejos</legend>
+          {% for complex in complexes %}
+            <label>
+              <input type="checkbox" name="complexes" value="{{ complex.pk }}"
+                     {% if complex.pk in account_complex_ids %}checked{% endif %}>
+              {{ complex.name }}
+            </label>
+          {% endfor %}
+        </fieldset>
+      {% else %}
+        <p class="alert alert--info">No administrás ningún complejo, así que no podés asignar pertenencias.</p>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  <div class="form-actions">
+    <button class="btn btn--primary" type="submit">Guardar cambios</button>
+    <a class="btn btn--secondary" href="{% url 'general_settings' %}">Volver a configuración</a>
+  </div>
+</form>
+{% endblock %}

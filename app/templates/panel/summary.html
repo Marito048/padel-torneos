@@ -1,0 +1,65 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Resumen · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Resumen del torneo</h1>
+  <p class="muted">
+    Categoría {{ tournament.get_category_display }} · Inicio {{ tournament.start_date }}
+    {% if tournament.end_date %} · Fin {{ tournament.end_date }}{% endif %}
+    · Mejor de {{ tournament.best_of_sets }} sets · {{ tournament.teams_per_zone }} duplas por zona
+    · Clasifican {{ tournament.qualifiers_per_zone }} por zona
+  </p>
+</section>
+
+<section class="stat-grid">
+  <article class="stat-card">
+    <span class="stat-card__value">{{ teams_count }}</span>
+    <span class="stat-card__label">Parejas inscriptas</span>
+    <a class="btn btn--primary btn--sm" href="{% url 'panel_teams' tournament.slug %}">Agregar pareja</a>
+  </article>
+  <article class="stat-card">
+    <span class="stat-card__value">{{ zones|length }}</span>
+    <span class="stat-card__label">Zonas</span>
+    <a class="btn btn--primary btn--sm" href="{% url 'panel_zones' tournament.slug %}">Generar zonas</a>
+  </article>
+  <article class="stat-card">
+    <span class="stat-card__value">{{ group_played }}/{{ group_total }}</span>
+    <span class="stat-card__label">Partidos de zona jugados</span>
+    <a class="btn btn--primary btn--sm" href="{% url 'panel_results' tournament.slug %}">Cargar resultado</a>
+  </article>
+  <article class="stat-card">
+    <span class="stat-card__value">{{ playoff_count }}</span>
+    <span class="stat-card__label">Partidos de llave</span>
+    {% if can_generate_bracket %}
+      <form method="post" action="{% url 'panel_bracket_generate' tournament.slug %}">{% csrf_token %}
+        <button class="btn btn--accent btn--sm" type="submit">Generar llaves</button>
+      </form>
+    {% else %}
+      <a class="btn btn--secondary btn--sm" href="{% url 'panel_bracket' tournament.slug %}">Ver llaves</a>
+    {% endif %}
+  </article>
+</section>
+
+<section class="panel-section">
+  <h2>Estado del torneo</h2>
+  <ul class="checklist">
+    <li class="{% if teams_count >= 2 %}ok{% else %}pending{% endif %}">
+      {% if teams_count >= 2 %}Hay {{ teams_count }} parejas inscriptas.{% else %}Faltan parejas: se necesitan al menos 2 para competir.{% endif %}
+    </li>
+    <li class="{% if zones %}ok{% else %}pending{% endif %}">
+      {% if zones %}{{ zones|length }} zonas configuradas.{% else %}Todavía no se generaron zonas.{% endif %}
+    </li>
+    <li class="{% if zones_complete %}ok{% else %}pending{% endif %}">
+      {% if zones_complete %}Todos los partidos de zona están completos.{% else %}
+        Faltan {{ group_pending }} partidos de zona.
+        {% if playoff_count %}Los cruces oficiales no se regeneran hasta completar la fase.{% endif %}
+      {% endif %}
+    </li>
+    <li class="{% if bracket_exists %}ok{% else %}pending{% endif %}">
+      {% if bracket_exists %}
+        Llave generada con {{ playoff_count }} partidos{% if playoff_pending %} ({{ playoff_pending }} por jugar){% endif %}.
+      {% else %}La llave se genera automáticamente al completar la última zona.{% endif %}
+    </li>
+  </ul>
+</section>
+{% endblock %}

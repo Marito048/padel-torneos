@@ -1,0 +1,72 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Torneos · Pádel Server</title>
+  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
+</head>
+<body class="padel-page">
+  <main class="padel-shell">
+    <header class="padel-topbar">
+      <div class="padel-brand">
+        <span class="padel-badge">PA</span>
+        <span>Pádel Server</span>
+      </div>
+      <div class="padel-actions">
+        <a class="btn btn--accent" href="{% url 'tournament_create' %}">Crear torneo</a>
+        {% if user.is_staff or user.is_superuser %}<a class="btn btn--secondary" href="{% url 'general_settings' %}">Configuración general</a>{% endif %}
+        <form method="post" action="{% url 'account_logout' %}" class="inline-form">{% csrf_token %}<button class="btn btn--secondary" type="submit">Salir</button></form>
+      </div>
+    </header>
+
+    {% if messages %}
+      <div class="messages" role="status" aria-live="polite">
+        {% for message in messages %}<div class="alert alert--{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}
+      </div>
+    {% endif %}
+
+    <section class="panel-section">
+      <h1>Tus torneos</h1>
+      <p class="muted">Elegí el torneo que querés administrar. La configuración queda guardada y no se vuelve a preguntar.</p>
+    </section>
+
+    {% if tournaments %}
+      <div class="padel-grid">
+        {% for t in tournaments %}
+          <article class="padel-card">
+            <h2>{{ t.name }}</h2>
+            <p class="muted">
+              {% if t.complex %}{{ t.complex.name }} · {% endif %}
+              {{ t.get_category_display }} · {{ t.get_format_type_display }}
+            </p>
+            <p>
+              <span class="status-pill {% if t.status == 'finished' %}status-pill--done{% elif t.status == 'running' %}status-pill--running{% else %}status-pill--pending{% endif %}">{{ t.get_status_display }}</span>
+              <span class="muted">{{ t.start_date }}{% if t.end_date %} – {{ t.end_date }}{% endif %}</span>
+            </p>
+            <div class="padel-actions">
+              <a class="btn btn--primary" href="{% url 'tournament_choose' t.slug %}">Administrar</a>
+              <a class="btn btn--secondary" href="{% url 'public_tournament_detail' t.slug %}">Ver público</a>
+              <form method="post" action="{% url 'panel_tournament_delete' t.slug %}" class="inline-form"
+                    data-confirm="¿Eliminar definitivamente el torneo «{{ t.name }}»? Se borran zonas, partidos, resultados y llaves. Las parejas y jugadores quedan guardados. No se puede deshacer.">
+                {% csrf_token %}
+                <button class="btn btn--danger btn--sm" type="submit">Eliminar</button>
+              </form>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="alert alert--info">No hay torneos disponibles para tu usuario.</p>
+      {% if user.is_staff and not user.complexes.exists %}
+        <p class="help">Todavía no tenés un complejo propio: crealo y después armá el torneo ahí dentro.</p>
+        <p><a class="btn btn--accent" href="{% url 'general_settings' %}">Crear mi complejo</a></p>
+      {% else %}
+        <p class="help">Creá un torneo nuevo o pedile acceso a un administrador.</p>
+      {% endif %}
+    {% endif %}
+  </main>
+  <script src="{% static 'core/panel.js' %}"></script>
+</body>
+</html>

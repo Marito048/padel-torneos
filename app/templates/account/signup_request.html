@@ -1,0 +1,62 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registrarse · Pádel Server</title>
+  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
+</head>
+<body class="padel-page">
+  <main class="padel-shell" style="max-width: 460px;">
+    <header class="padel-topbar">
+      <div class="padel-brand"><span class="padel-badge">PA</span><span>Pádel Server</span></div>
+    </header>
+    <section class="padel-card">
+      <h1>Registrarse</h1>
+      {% if messages %}
+        {% for message in messages %}<p class="alert alert--{{ message.tags|default:'info' }}">{{ message }}</p>{% endfor %}
+      {% endif %}
+      <p class="help">
+        ¿No usás Google? Contanos quién sos y los datos de tu complejo: un administrador
+        verifica la información y te crea la cuenta. Te va a llegar un correo con tu
+        usuario y la contraseña temporal.
+      </p>
+      <form method="post" action="{% url 'signup_request' %}" class="form-grid">
+        {% csrf_token %}
+        <label>Nombre
+          <input type="text" name="first_name" maxlength="150" required autocomplete="given-name">
+        </label>
+        <label>Apellido
+          <input type="text" name="last_name" maxlength="150" required autocomplete="family-name">
+        </label>
+        <label>Teléfono (WhatsApp)
+          <input type="text" name="phone" maxlength="40" required autocomplete="tel" placeholder="Ej: 341 555 5555">
+        </label>
+        <label>Email
+          <input type="email" name="email" required autocomplete="email" placeholder="Ej: nombre@correo.com">
+        </label>
+        <label>Nombre del complejo
+          <input type="text" name="complex_name" maxlength="120" required placeholder="Ej: Complejo Pádel Norte">
+        </label>
+        <label>Ciudad del complejo
+          <input type="text" name="complex_city" maxlength="120" placeholder="Ej: Rosario">
+        </label>
+        <label>Dirección del complejo
+          <input type="text" name="complex_address" maxlength="200" placeholder="Ej: Av. Central 123">
+        </label>
+        <div style="display: none;" aria-hidden="true">
+          <label>No completar
+            <input type="text" name="website" tabindex="-1" autocomplete="off">
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn--primary" type="submit">Enviar solicitud</button>
+          <a class="btn btn--secondary" href="{% url 'account_login' %}">Volver a Ingresar</a>
+        </div>
+      </form>
+      <p class="help">Si tu cuenta de Google ya está invitada, entrá directo con «Ingresar con Google».</p>
+    </section>
+  </main>
+</body>
+</html>

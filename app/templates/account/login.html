@@ -1,0 +1,53 @@
+{% load static socialaccount %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ingresar · Pádel Server</title>
+  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
+</head>
+<body class="padel-page">
+  <main class="padel-shell" style="max-width: 460px;">
+    <header class="padel-topbar">
+      <div class="padel-brand"><span class="padel-badge">PA</span><span>Pádel Server</span></div>
+    </header>
+    <section class="padel-card">
+      <h1>Ingresar</h1>
+      {% if form.errors %}<p class="alert alert--error">Usuario o contraseña incorrectos.</p>{% endif %}
+      {% if messages %}
+        {% for message in messages %}<p class="alert alert--{{ message.tags|default:'info' }}">{{ message }}</p>{% endfor %}
+      {% endif %}
+      <form method="post" action="{% url 'account_login' %}" class="form-grid">
+        {% csrf_token %}
+        <label>Usuario
+          <input type="text" name="login" autocomplete="username" required autofocus>
+        </label>
+        <label>Contraseña
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" name="remember"> Mantener sesión iniciada
+        </label>
+        {{ redirect_field }}
+        <div class="form-actions">
+          <button class="btn btn--primary" type="submit">Entrar</button>
+          <a class="btn btn--secondary" href="{% url 'public_tournaments' %}">Ver torneos públicos</a>
+        </div>
+      </form>
+
+      {% if google_login_enabled %}
+        <div class="login-divider"><span>o</span></div>
+        <a class="btn btn--google" href="{% provider_login_url 'google' process='login' %}">
+          Ingresar con Google
+        </a>
+      {% endif %}
+
+      <div class="login-divider"><span>¿No tenés cuenta?</span></div>
+      <a class="btn btn--secondary" href="{% url 'signup_request' %}">Registrarse</a>
+
+      <p class="help">Los administradores existentes siguen usando las mismas credenciales de siempre{% if google_login_enabled %}; también pueden vincular su cuenta de Google desde el panel{% endif %}.</p>
+    </section>
+  </main>
+</body>
+</html>

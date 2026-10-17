@@ -1,0 +1,366 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Configuración general{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Configuración general</h1>
+  <p class="muted">
+    Administrá tus complejos y quiénes entran al panel.
+    Cada complejo tiene sus propios torneos, zonas y partidos;
+    los jugadores son compartidos entre todos los complejos.
+  </p>
+</section>
+
+<section class="padel-card" id="complejos">
+  <h2>Mis complejos</h2>
+  <p class="help">
+    Cada usuario del panel administra su propio complejo: creá el tuyo y después armá
+    torneos ahí dentro. Los jugadores se comparten en toda la plataforma; torneos y
+    usuarios quedan separados por complejo.
+  </p>
+  {% if complexes %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Complejo</th>
+          <th>Ciudad</th>
+          <th>Torneos</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for complex in complexes %}
+          <tr>
+            <td>{{ complex.name }}</td>
+            <td>{% if complex.city %}{{ complex.city }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>{{ complex.tournaments.count }}</td>
+            <td><a class="btn btn--secondary btn--sm" href="{% url 'general_complex_edit' complex.pk %}">Editar</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="alert alert--info">Todavía no administrás ningún complejo. Creá el primero acá abajo.</p>
+  {% endif %}
+  <h3>Agregar complejo</h3>
+  <form method="post" action="{% url 'general_complex_create' %}" class="form-grid">
+    {% csrf_token %}
+    <label>Nombre
+      <input type="text" name="name" maxlength="120" required placeholder="Ej: Complejo Pádel Norte">
+    </label>
+    <label>Ciudad
+      <input type="text" name="city" maxlength="120" placeholder="Ej: Rosario">
+    </label>
+    <label>Dirección
+      <input type="text" name="address" maxlength="200" placeholder="Ej: Av. Central 123">
+    </label>
+    <label>Teléfono
+      <input type="text" name="phone" maxlength="40" placeholder="Ej: 341 555 5555">
+    </label>
+    <label>Email
+      <input type="email" name="email" placeholder="Ej: contacto@club.com">
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--primary" type="submit">Crear complejo</button>
+    </div>
+  </form>
+</section>
+
+<section class="padel-card" id="agregar-usuario">
+  <h2>Agregar usuario</h2>
+  {% if prefill.email %}
+    <p class="alert alert--info">
+      Solicitud de <strong>{{ prefill.email }}</strong>{% if prefill.complex_name %} (complejo «{{ prefill.complex_name }}»){% endif %}.
+      Los datos vienen precargados: revisalos, elegí usuario y contraseña, y guardá.
+    </p>
+  {% endif %}
+  <form method="post" action="{% url 'general_user_create' %}" class="form-grid">
+    {% csrf_token %}
+    <label>Nombre de usuario
+      <input type="text" name="username" maxlength="150" required autocomplete="off" value="{{ prefill.username }}" placeholder="Ej: juan.perez">
+    </label>
+    <label>Nombre
+      <input type="text" name="first_name" maxlength="150" autocomplete="off" value="{{ prefill.first_name }}">
+    </label>
+    <label>Apellido
+      <input type="text" name="last_name" maxlength="150" autocomplete="off" value="{{ prefill.last_name }}">
+    </label>
+    <label>Email
+      <input type="email" name="email" value="{{ prefill.email }}" placeholder="Ej: juan@correo.com">
+    </label>
+    <label>Contraseña temporal
+      <input type="password" name="password" required minlength="8" autocomplete="new-password">
+    </label>
+    <label>Repetir contraseña
+      <input type="password" name="password2" required minlength="8" autocomplete="new-password">
+    </label>
+    <label>
+      <span>Acceso al panel</span>
+      <span class="check-field">
+        <input type="checkbox" name="is_staff" value="1" checked>
+        Puede gestionar los torneos de sus complejos
+      </span>
+    </label>
+    {% if can_grant_superuser %}
+      <label>
+        <span>Administrador general</span>
+        <span class="check-field">
+          <input type="checkbox" name="is_superuser" value="1">
+          Acceso total a todos los complejos
+        </span>
+      </label>
+    {% endif %}
+    {% if complexes %}
+      <fieldset class="check-group">
+        <legend>Complejos</legend>
+        {% for complex in complexes %}
+          <label>
+            <input type="checkbox" name="complexes" value="{{ complex.pk }}"
+                   {% if preselect_complex == complex.pk %}checked{% endif %}>
+            {{ complex.name }}
+          </label>
+        {% endfor %}
+      </fieldset>
+    {% endif %}
+    {% if prefill.complex_name %}
+      <label>
+        <span>Complejo de la solicitud</span>
+        <span class="check-field">
+          <input type="checkbox" name="create_complex" value="1" checked>
+          Crear el complejo y asignarlo al usuario
+        </span>
+      </label>
+      <label>Nombre del complejo
+        <input type="text" name="complex_name" maxlength="120" value="{{ prefill.complex_name }}">
+      </label>
+      <label>Ciudad del complejo
+        <input type="text" name="complex_city" maxlength="120" value="{{ prefill.complex_city }}">
+      </label>
+      <label>Dirección del complejo
+        <input type="text" name="complex_address" maxlength="200" value="{{ prefill.complex_address }}">
+      </label>
+      <label>Teléfono del complejo
+        <input type="text" name="complex_phone" maxlength="40" value="{{ prefill.phone }}">
+      </label>
+      <input type="hidden" name="complex_email" value="{{ prefill.email }}">
+    {% endif %}
+    <label>
+      <span>Enviar los datos por email</span>
+      <span class="check-field">
+        <input type="checkbox" name="notify_email" value="1"{% if prefill.email %} checked{% endif %}>
+        Le manda el usuario y la contraseña temporal al email cargado
+      </span>
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--primary" type="submit">Agregar usuario</button>
+    </div>
+  </form>
+  <p class="help">
+    Mínimo 8 caracteres de contraseña (sin mayúsculas ni símbolos obligatorios).
+    Al entrar, el sistema le recuerda cambiarla por una propia.
+    Si su email coincide con una cuenta de Google, también puede ingresar con Google.
+  </p>
+</section>
+
+{% if is_general_admin %}
+<section class="padel-card" id="solicitudes">
+  <h2>Solicitudes de registro</h2>
+  <p class="help">
+    Pedidos de cuenta de gente que no usa Google (llegan desde «Registrarse» en el
+    inicio) con sus datos y los del complejo. Verificalos y usá «Crear usuario»:
+    el formulario ya queda precargado y con el tilde se crea también el complejo.
+  </p>
+  {% if registration_requests %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Quién</th>
+          <th>Teléfono</th>
+          <th>Complejo</th>
+          <th>Pedida</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for registration in registration_requests %}
+          <tr>
+            <td>{{ registration.email }}</td>
+            <td>{{ registration.first_name }} {{ registration.last_name }}</td>
+            <td>{{ registration.phone }}</td>
+            <td>
+              {{ registration.complex_name }}
+              {% if registration.complex_city or registration.complex_address %}
+                <div class="muted">
+                  {% if registration.complex_city %}{{ registration.complex_city }}{% endif %}
+                  {% if registration.complex_city and registration.complex_address %} · {% endif %}
+                  {% if registration.complex_address %}{{ registration.complex_address }}{% endif %}
+                </div>
+              {% endif %}
+            </td>
+            <td>{{ registration.created_at|date:"d/m/Y H:i" }}</td>
+            <td>
+              <div class="inline-form">
+                <a class="btn btn--primary btn--sm"
+                   href="{% url 'general_settings' %}?email={{ registration.email|urlencode }}&first_name={{ registration.first_name|urlencode }}&last_name={{ registration.last_name|urlencode }}&phone={{ registration.phone|urlencode }}&complex_name={{ registration.complex_name|urlencode }}&complex_city={{ registration.complex_city|urlencode }}&complex_address={{ registration.complex_address|urlencode }}#agregar-usuario">Crear usuario</a>
+                <form method="post" action="{% url 'general_registration_request_delete' registration.pk %}" class="inline-form">
+                  {% csrf_token %}
+                  <button class="btn btn--secondary btn--sm" type="submit">Descartar</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="alert alert--info">No hay solicitudes pendientes.</p>
+  {% endif %}
+</section>
+
+<section class="padel-card" id="invitaciones">
+  <h2>Invitaciones por email</h2>
+  <p class="help">
+    Cargá el email de Google de los futuros dueños de complejos (o del personal que va a
+    entrar a un complejo existente). Cuando esa persona ingrese con «Ingresar con Google»
+    su cuenta se crea sola: si la invitación trae un complejo, entra directo a él; si no,
+    completa sus datos y crea su propio complejo.
+  </p>
+  {% if invitations %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Complejo</th>
+          <th>Invitada por</th>
+          <th>Cargada</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for invitation in invitations %}
+          <tr>
+            <td>{{ invitation.email }}</td>
+            <td>
+              {% if invitation.complex %}{{ invitation.complex.name }}
+              {% else %}<span class="muted">Su propio complejo</span>{% endif %}
+            </td>
+            <td>
+              {% if invitation.created_by %}{{ invitation.created_by.username }}
+              {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+            <td>{{ invitation.created_at|date:"d/m/Y H:i" }}</td>
+            <td>
+              <form method="post" action="{% url 'general_invitation_delete' invitation.pk %}" class="inline-form">
+                {% csrf_token %}
+                <button class="btn btn--secondary btn--sm" type="submit">Revocar</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="alert alert--info">No hay invitaciones pendientes.</p>
+  {% endif %}
+  <h3>Cargar invitación</h3>
+  <form method="post" action="{% url 'general_invitation_create' %}" class="form-grid">
+    {% csrf_token %}
+    <label>Email de Google
+      <input type="email" name="email" required autocomplete="off" placeholder="Ej: dueno@gmail.com">
+    </label>
+    {% if complexes %}
+      <label>Complejo (opcional)
+        <select name="complex">
+          <option value="">— Sin complejo: la persona crea el suyo —</option>
+          {% for complex in complexes %}
+            <option value="{{ complex.pk }}">{{ complex.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% endif %}
+    <div class="form-actions">
+      <button class="btn btn--primary" type="submit">Guardar invitación</button>
+    </div>
+  </form>
+  {% if invitations_used %}
+    <details style="margin-top: 1rem;">
+      <summary class="muted" style="cursor: pointer;">Invitaciones ya usadas ({{ invitations_used|length }})</summary>
+      <table class="data-table">
+        <thead>
+          <tr><th>Email</th><th>Usuario</th><th>Usada</th></tr>
+        </thead>
+        <tbody>
+          {% for invitation in invitations_used %}
+            <tr>
+              <td>{{ invitation.email }}</td>
+              <td>
+                {% if invitation.used_by %}{{ invitation.used_by.username }}
+                {% else %}<span class="muted">—</span>{% endif %}
+              </td>
+              <td>{{ invitation.used_at|date:"d/m/Y H:i" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel-section">
+  <h2>Usuarios ({{ rows|length }})</h2>
+  <form method="get" class="inline-form" style="margin-bottom: .8rem;">
+    <input type="text" name="q" value="{{ query }}" placeholder="Buscar por usuario, nombre o email…">
+    <button class="btn btn--secondary btn--sm" type="submit">Buscar</button>
+    {% if query %}<a class="btn btn--secondary btn--sm" href="{% url 'general_settings' %}">Limpiar</a>{% endif %}
+  </form>
+  {% if rows %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Nombre</th>
+          <th>Email</th>
+          <th>Complejos</th>
+          <th>Acceso</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td>
+              <a href="{% url 'general_user_edit' row.account.pk %}">{{ row.account.username }}</a>
+              {% if row.is_self %}<span class="chip chip--open">Vos</span>{% endif %}
+            </td>
+            <td>{{ row.account.get_full_name|default:"—" }}</td>
+            <td>{% if row.account.email %}{{ row.account.email }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>
+              {% if row.account.is_superuser %}
+                <span class="chip chip--running">Todos</span>
+              {% elif row.complexes %}
+                {% for complex in row.complexes %}<span class="chip">{{ complex.name }}</span> {% endfor %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if row.account.is_superuser %}
+                <span class="chip chip--running">Administrador general</span>
+              {% elif row.account.is_staff %}
+                <span class="chip chip--running">Panel</span>
+              {% else %}
+                <span class="chip chip--draft">Sin panel</span>
+              {% endif %}
+              {% if not row.account.is_active %}<span class="chip chip--draft">Inactivo</span>{% endif %}
+            </td>
+            <td><a class="btn btn--secondary btn--sm" href="{% url 'general_user_edit' row.account.pk %}">Editar</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="alert alert--info">No hay usuarios que coincidan con la búsqueda.</p>
+  {% endif %}
+</section>
+{% endblock %}

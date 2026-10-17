@@ -1,0 +1,109 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}{{ player }} · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>{{ player }}</h1>
+  <p class="muted">
+    Ficha guardada en la base y reutilizable en todos los torneos.
+    {% if in_tournament %}<span class="chip chip--open">En este torneo</span>{% endif %}
+    {% if not player.active %}<span class="chip chip--draft">Inactivo</span>{% endif %}
+  </p>
+</section>
+
+<section class="padel-card">
+  <h2>Datos del jugador</h2>
+  <form method="post" class="form-grid">
+    {% csrf_token %}
+    <label>Nombre
+      <input type="text" name="first_name" maxlength="60" required value="{{ player.first_name }}">
+    </label>
+    <label>Apellido
+      <input type="text" name="last_name" maxlength="60" required value="{{ player.last_name }}">
+    </label>
+    <label>Género
+      <select name="gender">
+        {% for value, label in genders %}<option value="{{ value }}"{% if player.gender == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Nivel
+      <select name="level">
+        {% for value, label in levels %}<option value="{{ value }}"{% if player.level == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Teléfono
+      <input type="text" name="phone" maxlength="40" value="{{ player.phone }}">
+    </label>
+    <label>Email
+      <input type="email" name="email" value="{{ player.email }}">
+    </label>
+    <label>
+      <span>Disponibilidad</span>
+      <span class="check-field">
+        <input type="checkbox" name="active" value="1"{% if player.active %} checked{% endif %}>
+        Disponible para nuevos torneos
+      </span>
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--primary" type="submit">Guardar cambios</button>
+      <a class="btn btn--secondary" href="{% url 'panel_players' tournament.slug %}">Volver al listado</a>
+    </div>
+  </form>
+</section>
+
+{% if history %}
+<section class="panel-section">
+  <h2>Torneos en los que participó</h2>
+  <div class="card-list">
+    {% for entry in history %}
+      <article class="padel-card">
+        <h3>{{ entry.tournament.name }}</h3>
+        <p class="muted">
+          Dupla: {{ entry.team }} · {{ entry.tournament.get_status_display }}
+          · {{ entry.tournament.start_date|date:"d/m/Y" }}
+        </p>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="padel-card padel-card--danger">
+  <h2>Unificar ficha duplicada</h2>
+  <p class="help">
+    Usá esta opción <strong>sólo si la misma persona quedó cargada dos veces</strong>.
+    Elegí con qué ficha unificar: esta se elimina y todas sus duplas, inscripciones y
+    partidos pasan a la ficha que se conserva. No se puede unificar si ambos jugadores
+    ya juegan el mismo torneo o si forman dupla entre sí.
+    ¿La persona ya no existe y querés borrarla sin duplicados? Usá «Eliminar jugador».
+  </p>
+  <form method="post" action="{% url 'panel_player_merge' tournament.slug player.pk %}" class="form-grid"
+        data-confirm="¿Unificar esta ficha con el jugador elegido? Esta ficha se elimina y sus datos se trasladan.">
+    {% csrf_token %}
+    <label>Conservar a
+      <select name="target" required>
+        <option value="">Elegí el jugador que se conserva…</option>
+        {% for other in others %}
+          <option value="{{ other.pk }}">{{ other }}{% if not other.active %} (inactivo){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--danger" type="submit">Unificar y eliminar esta ficha</button>
+    </div>
+  </form>
+</section>
+
+<section class="padel-card padel-card--danger">
+  <h2>Eliminar jugador</h2>
+  <p class="help">
+    Borra esta ficha de la base de jugadores. Sólo se permite si el jugador no está en
+    ningún torneo ni tiene partidos cargados; si ya jugó, sus datos se conservan para no
+    alterar esos torneos y conviene desactivarlo con «Disponible para nuevos torneos».
+  </p>
+  <form method="post" action="{% url 'panel_player_delete' tournament.slug player.pk %}"
+        data-confirm="¿Eliminar definitivamente la ficha «{{ player }}»? No se puede deshacer.">
+    {% csrf_token %}
+    <button class="btn btn--danger" type="submit">Eliminar ficha</button>
+  </form>
+</section>
+{% endblock %}

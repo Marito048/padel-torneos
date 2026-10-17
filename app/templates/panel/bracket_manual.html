@@ -1,0 +1,70 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Cruces a mano · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Armar cruces a mano</h1>
+  <p class="muted">
+    Elegí qué duplas se enfrentan en la primera ronda ({{ matches_count }} cruces,
+    llave de {{ bracket_size }}{% if byes %} · {{ byes }} descanso{{ byes|pluralize:"s" }}{% endif %}).
+    Dejá un lugar vacío para dar descanso (bye). Las rondas siguientes se completan
+    solas con los ganadores.
+  </p>
+</section>
+
+<section class="padel-card">
+  <h2>Clasificadas ({{ pool|length }})</h2>
+  <p class="help">Todas tienen que quedar ubicadas exactamente una vez.</p>
+  <div class="zone-qualifier-grid">
+    {% for group in pool_zones %}
+      <div class="zone-qualifier">
+        <h3>Zona {{ group.zone.name }}</h3>
+        <ul>
+          {% for entry in group.entries %}
+            <li><span class="pos">{{ entry.zone_position }}°</span> {{ entry.team.display_name }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<form method="post">
+  {% csrf_token %}
+  <section class="padel-card">
+    <h2>Cruces de primera ronda</h2>
+    <div class="bracket-slots">
+      {% for row in slots %}
+        <fieldset class="bracket-slot">
+          <legend>Cruce {{ row.slot }}</legend>
+          <label>Dupla A
+            <select name="team1_{{ row.slot }}">
+              <option value="">— (descanso)</option>
+              {% for entry in pool %}
+                <option value="{{ entry.team.pk }}"{% if row.team1 == entry.team.pk %} selected{% endif %}>
+                  {{ entry.team.display_name }} — Zona {{ entry.zone.name }} · {{ entry.zone_position }}°
+                </option>
+              {% endfor %}
+            </select>
+          </label>
+          <span class="vs">vs</span>
+          <label>Dupla B
+            <select name="team2_{{ row.slot }}">
+              <option value="">— (descanso)</option>
+              {% for entry in pool %}
+                <option value="{{ entry.team.pk }}"{% if row.team2 == entry.team.pk %} selected{% endif %}>
+                  {{ entry.team.display_name }} — Zona {{ entry.zone.name }} · {{ entry.zone_position }}°
+                </option>
+              {% endfor %}
+            </select>
+          </label>
+        </fieldset>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button class="btn btn--primary" type="submit">Guardar cruces</button>
+    <a class="btn btn--secondary" href="{% url 'panel_bracket' tournament.slug %}">Volver a llaves</a>
+  </div>
+</form>
+{% endblock %}

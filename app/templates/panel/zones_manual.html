@@ -1,0 +1,48 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Zonas a mano · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Armar zonas a mano</h1>
+  <p class="muted">
+    Elegí a qué zona va cada pareja. Cada zona necesita entre 2 y {{ max_size }} duplas
+    (configuración actual) y las que queden vacías se descartan solas. Las parejas que
+    dejes en «Sin zona» quedan libres para después.
+  </p>
+  {% if bracket_blocked %}
+    <p class="alert alert--error">La llave ya tiene resultados cargados: no se puede cambiar la composición de las zonas.</p>
+  {% endif %}
+</section>
+
+<form method="post">
+  {% csrf_token %}
+  <section class="padel-card">
+    <table class="data-table">
+      <thead>
+        <tr><th>Pareja</th><th>Zona</th></tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td>{{ row.team }}</td>
+            <td>
+              <select name="team_{{ row.team.pk }}">
+                <option value=""{% if not row.value %} selected{% endif %}>Sin zona</option>
+                {% for option in zone_options %}
+                  <option value="{{ option.value }}"{% if row.value == option.value %} selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+                {% for option in new_options %}
+                  <option value="{{ option.value }}"{% if row.value == option.value %} selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  <div class="form-actions">
+    <button class="btn btn--primary" type="submit">Guardar zonas</button>
+    <a class="btn btn--secondary" href="{% url 'panel_zones' tournament.slug %}">Volver a zonas</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,149 @@
+{% extends "panel/base_panel.html" %}
+{% load static %}
+{% block title %}Llaves · {{ tournament.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Llaves eliminatorias</h1>
+  <p class="muted">
+    Cruces: primeros contra segundos de otras zonas cuando existe alternativa,
+    descansos para las mejores clasificadas y avance automático del ganador.
+    Si preferís definir los cruces vos, usá «Armar cruces a mano».
+    {% if manual %}<span class="chip chip--open">Cruces armados a mano</span>{% endif %}
+  </p>
+  {% if can_build %}
+    <div class="bracket-actions">
+      <form method="post" action="{% url 'panel_bracket_generate' tournament.slug %}"
+            data-confirm="{% if bracket_exists %}¿Regenerar la llave con la siembra automática? Se descarta el armado actual (todavía no hay resultados cargados).{% else %}¿Generar las llaves eliminatorias con la clasificación oficial?{% endif %}">
+        {% csrf_token %}
+        <button class="btn btn--accent" type="submit">{% if bracket_exists %}Regenerar automáticamente{% else %}Generar automáticamente{% endif %}</button>
+      </form>
+      <a class="btn btn--secondary" href="{% url 'panel_bracket_manual' tournament.slug %}">
+        {% if bracket_exists %}Rearmar cruces a mano{% else %}Armar cruces a mano{% endif %}
+      </a>
+    </div>
+  {% endif %}
+  {% if not tournament.playoffs_enabled %}
+    <p class="alert alert--info">Este torneo es sólo round robin: no se generan llaves eliminatorias.</p>
+  {% elif not zones_complete %}
+    <p class="alert alert--info">
+      Para generar cruces oficiales falta completar la fase de zonas.
+    </p>
+    {% for item in pending_zones %}
+      {% if item.pending %}
+        <h3>Zona {{ item.zone.name }} · {{ item.pending|length }} partidos pendientes</h3>
+        <ul>
+          {% for match in item.pending %}
+            <li>{{ match.team1 }} vs {{ match.team2 }} — <a href="{% url 'panel_results' tournament.slug %}">cargar resultado</a></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endfor %}
+  {% elif qualifiers_total < 2 %}
+    <p class="alert alert--info">Con la configuración actual clasifica menos de una pareja; no hay cuadro que generar.</p>
+  {% endif %}
+</section>
+
+{% if rounds %}
+  <div class="view-switch">
+    <a href="?vista=cuadro" class="{% if vista == 'cuadro' %}active{% endif %}">Cuadro gráfico</a>
+    <a href="?vista=detalle" class="{% if vista == 'detalle' %}active{% endif %}">Lista de partidos</a>
+  </div>
+
+  {% if vista == "cuadro" %}
+    {% if zone_qualifiers %}
+      <section class="padel-card zone-qualifiers">
+        <h2>Clasificadas por zona</h2>
+        <div class="zone-qualifier-grid">
+          {% for item in zone_qualifiers %}
+            <div class="zone-qualifier">
+              <h3>Zona {{ item.zone.name }}</h3>
+              <ul>
+                {% for entry in item.entries %}
+                  <li><span class="pos">{{ entry.zone_position }}°</span> {{ entry.team.display_name }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="bracket-scroll">
+      <div class="bracket-canvas" id="bracket-canvas">
+        <svg class="bracket-lines" id="bracket-lines" aria-hidden="true"></svg>
+        {% for round in tree %}
+          <div class="tree-round">
+            <h3 class="tree-round-title">{{ round.label }}</h3>
+            <div class="tree-round-body">
+              {% for item in round.matches %}
+                <div class="tree-match{% if item.match.is_bye %} tree-match--bye{% endif %}"
+                     id="tree-match-{{ item.match.pk }}"
+                     {% if item.match.next_match_id %}data-next="tree-match-{{ item.match.next_match_id }}"{% endif %}>
+                  {% if item.match.is_bye %}
+                    <p class="tree-note">Descanso (bye)</p>
+                    <p class="tree-team">{% if item.match.team1 %}{{ item.match.team1.display_name }}{% else %}{{ item.match.team2.display_name }}{% endif %}</p>
+                  {% else %}
+                    <p class="tree-team{% if item.match.team1_id and item.match.winner_id == item.match.team1_id %} is-winner{% endif %}">
+                      {% if item.match.team1 %}
+                        {{ item.match.team1.display_name }}{% if item.origin1 %} <span class="tree-origin">{{ item.origin1 }}</span>{% endif %}
+                      {% else %}<span class="muted">Por definir</span>{% endif %}
+                    </p>
+                    <p class="tree-team{% if item.match.team2_id and item.match.winner_id == item.match.team2_id %} is-winner{% endif %}">
+                      {% if item.match.team2 %}
+                        {{ item.match.team2.display_name }}{% if item.origin2 %} <span class="tree-origin">{{ item.origin2 }}</span>{% endif %}
+                      {% else %}<span class="muted">Por definir</span>{% endif %}
+                    </p>
+                    <p class="tree-meta">
+                      {% if item.match.score %}{{ item.match.score }}
+                      {% elif item.match.winner_id %}Ganó {{ item.match.winner.display_name }}
+                      {% elif item.match.team1_id and item.match.team2_id %}Pendiente
+                      {% else %}Esperando cruces{% endif %}
+                    </p>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+    <p class="help">Deslizá el cuadro hacia los costados para ver todas las rondas. El ganador de cada cruce queda marcado con ✓.</p>
+  {% else %}
+    <section class="bracket">
+      {% for round in rounds %}
+        <div class="bracket-round">
+          <h2>{{ round.label }}</h2>
+          {% for match in round.matches %}
+            <article class="bracket-match {% if match.is_bye %}bracket-match--bye{% endif %}">
+              {% if match.is_bye %}
+                <p class="bracket-note">Descanso (bye) · posición {{ match.slot }}</p>
+                <p class="team winner">{{ match.team1|default:match.team2 }}</p>
+              {% else %}
+                <p class="bracket-note">Partido {{ match.slot }}</p>
+                <p class="team {% if match.team1_id and match.winner_id == match.team1_id %}winner{% endif %}">{{ match.team1|default:"Por definir" }}</p>
+                <p class="team {% if match.team2_id and match.winner_id == match.team2_id %}winner{% endif %}">{{ match.team2|default:"Por definir" }}</p>
+                <p class="match-status">
+                  {% if match.winner_id %}<span class="status-pill status-pill--done">Ganó {{ match.winner }}</span>
+                  {% elif match.team1_id and match.team2_id %}<span class="status-pill status-pill--pending">Pendiente</span>
+                  {% else %}<span class="status-pill status-pill--running">Esperando cruces</span>{% endif %}
+                </p>
+                {% if match.score %}<p class="score">{{ match.score }}</p>{% endif %}
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  {% if has_real_data %}
+    <p class="help">La llave tiene resultados: no se regenera automáticamente. Para cambios, corregí los resultados dependientes.</p>
+  {% endif %}
+{% elif zones_complete and tournament.playoffs_enabled and qualifiers_total >= 2 %}
+  <p class="alert alert--info">Todavía no se generaron las llaves. Se generan automáticamente con el último resultado de zona o con el botón «Generar llaves».</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {% if rounds and vista == "cuadro" %}<script src="{% static 'core/bracket_tree.js' %}"></script>{% endif %}
+{% endblock %}

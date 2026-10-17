@@ -1,0 +1,40 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}{{ complex.name }} · Configuración{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>{{ complex.name }}</h1>
+  <p class="muted">
+    Datos del complejo. Los torneos, zonas y partidos quedan dentro de este complejo;
+    los jugadores se comparten con el resto de la plataforma.
+  </p>
+</section>
+
+<form method="post">
+  {% csrf_token %}
+  <section class="padel-card">
+    <h2>Datos</h2>
+    <div class="form-grid">
+      <label>Nombre
+        <input type="text" name="name" maxlength="120" required value="{{ complex.name }}">
+      </label>
+      <label>Ciudad
+        <input type="text" name="city" maxlength="120" value="{{ complex.city }}">
+      </label>
+      <label>Dirección
+        <input type="text" name="address" maxlength="200" value="{{ complex.address }}">
+      </label>
+      <label>Teléfono
+        <input type="text" name="phone" maxlength="40" value="{{ complex.phone }}">
+      </label>
+      <label>Email
+        <input type="email" name="email" value="{{ complex.email }}">
+      </label>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button class="btn btn--primary" type="submit">Guardar cambios</button>
+    <a class="btn btn--secondary" href="{% url 'general_settings' %}">Volver a configuración</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registro cerrado · Pádel Server</title>
+  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
+</head>
+<body class="padel-page">
+  <main class="padel-shell" style="max-width: 460px;">
+    <header class="padel-topbar">
+      <div class="padel-brand"><span class="padel-badge">PA</span><span>Pádel Server</span></div>
+    </header>
+    <section class="padel-card">
+      <h1>Registro cerrado</h1>
+      <p>El acceso es por invitación: los usuarios los crea la administración de cada complejo.</p>
+      <p>
+        Si intentaste ingresar con <strong>Google</strong>, la cuenta de Google debe usar el
+        <strong>mismo email</strong> que tiene tu usuario en el panel.
+      </p>
+      <p>
+        Si sos nuevo, pedile a un administrador que cargue una <strong>invitación</strong> con tu
+        email de Google desde Configuración general; si ya tenías usuario, que agregue ese email
+        a tu cuenta. Después volvé a intentarlo.
+      </p>
+      <p>
+        ¿No usás Google? Podés <a href="{% url 'signup_request' %}">enviar una solicitud de cuenta</a>
+        con tu email: un administrador te la crea y te envía el usuario y la contraseña.
+      </p>
+      <div class="form-actions">
+        <a class="btn btn--primary" href="{% url 'account_login' %}">Volver a Ingresar</a>
+        <a class="btn btn--secondary" href="{% url 'signup_request' %}">Solicitar cuenta</a>
+        <a class="btn btn--secondary" href="{% url 'public_tournaments' %}">Ver torneos públicos</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
