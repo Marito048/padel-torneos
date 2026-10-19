@@ -1,0 +1,80 @@
+{% extends "panel/base_panel.html" %}
+
+{% block title %}Precio y avisos{% endblock %}
+
+{% block content %}
+<section class="panel-section">
+  <h1>Precio y avisos</h1>
+  <p class="muted">Precio del turno, datos para cobrar por Mercado Pago y el WhatsApp que recibe el aviso de cada reserva.</p>
+  <div class="padel-actions">
+    <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Volver a la agenda</a>
+    <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_horarios' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Horarios y feriados</a>
+  </div>
+</section>
+
+{% if not complexes %}
+  <p class="alert alert--info">Tu usuario todavía no tiene complejos asignados.</p>
+{% else %}
+  <form method="get" action="{% url 'panel_turnos_ajustes' %}" class="turnos-filter">
+    <label>Complejo
+      <select name="complejo" onchange="this.form.submit()">
+        {% for complex in complexes %}
+          <option value="{{ complex.slug }}"{% if selected_complex and complex.pk == selected_complex.pk %} selected{% endif %}>{{ complex.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn btn--primary btn--sm" type="submit">Ver</button></noscript>
+  </form>
+
+  <div class="padel-grid">
+    <article class="padel-card">
+      <h2>Precio y cobro</h2>
+      <form method="post" action="{% url 'panel_horarios_accion' %}" class="form-grid">
+        {% csrf_token %}
+        <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+        <input type="hidden" name="accion" value="guardar_ajustes">
+        <label>Precio del turno (pesos)
+          <input type="number" name="precio" min="0" step="0.01" value="{{ selected_complex.booking_price|floatformat:'-2' }}" placeholder="Ej: 8000">
+        </label>
+        <p class="help">Dejalo en 0 si los turnos no tienen precio. El precio se muestra en la página pública al reservar.</p>
+        <label>Alias o CVU de Mercado Pago
+          <input type="text" name="mp_alias" maxlength="80" value="{{ selected_complex.mp_alias }}" placeholder="Ej: padel.complejo.mp">
+        </label>
+        <label>Titular de la cuenta
+          <input type="text" name="mp_holder" maxlength="80" value="{{ selected_complex.mp_holder }}" placeholder="Ej: Juan Pérez">
+        </label>
+        <label>Link de pago (opcional)
+          <input type="url" name="mp_link" maxlength="300" value="{{ selected_complex.mp_link }}" placeholder="https://mpago.la/...">
+        </label>
+        <p class="help">El cliente ve estos datos al confirmar el turno y puede pagar desde ahí. Después el complejo marca el turno como abonado desde la agenda.</p>
+
+        <h3>Avisos por WhatsApp</h3>
+        <label>WhatsApp del complejo
+          <input type="tel" name="whatsapp_phone" maxlength="40" value="{{ selected_complex.whatsapp_phone }}" placeholder="Ej: 5492215551234">
+        </label>
+        <label>CallMeBot API key (opcional)
+          <input type="text" name="whatsapp_apikey" maxlength="60" value="{{ selected_complex.whatsapp_apikey }}" placeholder="Ej: 123456">
+        </label>
+        <p class="help">
+          Con el número cargado, cada reserva muestra el botón «Confirmar por WhatsApp» para que el cliente avise al complejo.
+          Si además cargás la API key de <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">CallMeBot</a> (se pide una vez desde el WhatsApp del complejo), el sistema le manda solo un mensaje con cada reserva nueva.
+        </p>
+
+        <div class="form-actions">
+          <button class="btn btn--primary" type="submit">Guardar ajustes</button>
+        </div>
+      </form>
+    </article>
+
+    <article class="padel-card">
+      <h2>Cómo queda para el cliente</h2>
+      <ul class="pause-list">
+        <li><span>Al reservar ve el precio del turno si es mayor a 0.</span></li>
+        <li><span>Al confirmar ve el alias o el link de Mercado Pago y puede avisarte por WhatsApp.</span></li>
+        <li><span>En la agenda, cada reserva tiene el botón «Avisar» que abre WhatsApp con el mensaje de confirmación ya escrito.</span></li>
+        <li><span>El botón «Marcar abonado» pasa el turno a cobrado y suma en los totales del día.</span></li>
+      </ul>
+    </article>
+  </div>
+{% endif %}
+{% endblock %}

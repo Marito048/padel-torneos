@@ -109,9 +109,9 @@ def _send_email(subject: str, text: str, extra_recipients: list[str] | None = No
         logger.warning("No se pudo enviar el aviso por email", exc_info=True)
 
 
-def _send_whatsapp(text: str) -> None:
-    phone = getattr(settings, "WHATSAPP_ALERT_PHONE", "")
-    apikey = getattr(settings, "WHATSAPP_ALERT_APIKEY", "")
+def _send_whatsapp(text: str, *, phone: str = "", apikey: str = "") -> None:
+    phone = phone or getattr(settings, "WHATSAPP_ALERT_PHONE", "")
+    apikey = apikey or getattr(settings, "WHATSAPP_ALERT_APIKEY", "")
     if not (phone and apikey):
         return
     params = urlencode({"phone": phone, "text": text, "apikey": apikey})
@@ -120,3 +120,37 @@ def _send_whatsapp(text: str) -> None:
             response.read()
     except Exception:
         logger.warning("No se pudo enviar el aviso por WhatsApp", exc_info=True)
+
+
+def notify_court_booking(booking) -> None:
+    """Avisa al complejo que entró una reserva de cancha desde la página pública.
+
+    Usa el WhatsApp configurado en el complejo (con su CallMeBot API key) y, si
+    no hay, cae a la configuración global del ``.env``. Los fallos nunca
+    interrumpen la reserva: sólo quedan anotados en el log.
+    """
+    logger.info(
+        "Nueva reserva de cancha: %s %s %s-%s (%s)",
+        booking.complex.name,
+        booking.date,
+        booking.start_time,
+        booking.end_time,
+        booking.customer_name or "sin nombre",
+    )
+    lines = [
+        f"Cancha: {booking.court.name}",
+        f"Día: {booking.date:%d/%m/%Y} de {booking.start_time:%H:%M} a {booking.end_time:%H:%M}",
+        f"Cliente: {booking.customer_name or '—'}",
+        f"WhatsApp: {booking.customer_phone or '—'}",
+    ]
+    if booking.note:
+        lines.append(f"Nota: {booking.note}")
+    if booking.price and booking.price > 0:
+        lines.append(f"Precio: ${booking.price}")
+    lines.append(f"Código: {booking.code}")
+    text = "Pádel Server: nueva reserva de cancha.\n" + "\n".join(lines)
+    _send_whatsapp(
+        text,
+        phone=booking.complex.whatsapp_phone,
+        apikey=booking.complex.whatsapp_apikey,
+    )

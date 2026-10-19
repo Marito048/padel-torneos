@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date as date_cls, time as time_cls, timedelta
+from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
 
 from django.conf import settings
@@ -20,7 +22,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
-from django.core.validators import validate_email
+from django.core.validators import URLValidator, validate_email
 from django.db import IntegrityError, transaction
 from django.db.models import Count, ProtectedError, Q
 from django.http import Http404, JsonResponse
@@ -49,7 +51,7 @@ from core.models import (
     Zone,
     ZoneTeam,
 )
-from core.notifications import notify_new_signup_request, notify_tournament_team_signup
+from core.notifications import notify_court_booking, notify_new_signup_request, notify_tournament_team_signup
 from core.services import draws
 from core.services import matches as matches_service
 from core.services import players as players_service
@@ -1946,13 +1948,22 @@ def public_tournament_signup(request, slug):
 # Turnos de cancha (público)
 # ---------------------------------------------------------------------------
 
-TURNOS_DIAS = 14
+TURNOS_DIAS = 60
 
 
 def _parse_date(raw, default=None):
     if raw:
         try:
             return date_cls.fromisoformat(raw)
+        except (TypeError, ValueError):
+            pass
+    return default
+
+
+def _parse_month(raw, default=None):
+    if raw:
+        try:
+            return date_cls.fromisoformat(f"{raw.strip()}-01")
         except (TypeError, ValueError):
             pass
     return default
@@ -1965,6 +1976,23 @@ def _parse_time(raw):
         except (TypeError, ValueError):
             pass
     return None
+
+
+def _wa_number(phone: str) -> str:
+    """Número para wa.me: sin símbolos y con 549 si viene sin código de país."""
+    digits = re.sub(r"\D", "", phone or "")
+    if digits.startswith("0"):
+        digits = digits[1:]
+    if len(digits) == 10:
+        digits = "549" + digits
+    return digits
+
+
+def _wa_url(phone: str, text: str) -> str:
+    digits = _wa_number(phone)
+    if not digits:
+        return ""
+    return f"https://wa.me/{digits}?text={quote(text)}"
 
 
 def _selected_public_complex(request):
@@ -1980,19 +2008,38 @@ def _selected_public_complex(request):
 
 
 def turnos(request):
-    """Grilla pública de turnos con reserva sin registro."""
+    """Grilla pública de turnos con reserva sin registro (calendario + horarios)."""
     today = timezone.localdate()
     complexes, selected = _selected_public_complex(request)
 
-    day = _parse_date(request.GET.get("fecha"), today)
     last_day = today + timedelta(days=TURNOS_DIAS - 1)
+    day = _parse_date(request.GET.get("fecha"), today)
     if day < today:
         day = today
     if day > last_day:
         day = last_day
-    days = [today + timedelta(days=index) for index in range(TURNOS_DIAS)]
 
     board = schedule_service.board_for_day(selected, day) if selected else None
+
+    # Calendario del mes visible (por defecto, el del día elegido).
+    calendar_data = None
+    if selected:
+        month = _parse_month(request.GET.get("mes"), day.replace(day=1))
+        first_month = today.replace(day=1)
+        last_month = last_day.replace(day=1)
+        if month < first_month:
+            month = first_month
+        if month > last_month:
+            month = last_month
+        weeks = schedule_service.month_calendar(
+            selected, month, today=today, last_day=last_day, selected=day
+        )
+        calendar_data = {
+            "month": month,
+            "weeks": weeks,
+            "prev": month - timedelta(days=1) if month > first_month else None,
+            "next": (month + timedelta(days=32)).replace(day=1) if month < last_month else None,
+        }
 
     selected_slot = None
     if board:
@@ -2016,7 +2063,8 @@ def turnos(request):
             "selected_complex": selected,
             "day": day,
             "today": today,
-            "days": days,
+            "last_day": last_day,
+            "calendar": calendar_data,
             "board": board,
             "selected_slot": selected_slot,
         },
@@ -2073,24 +2121,38 @@ def turno_reservar(request):
                 customer_name=name[:80],
                 customer_phone=phone[:40],
                 note=note[:140],
+                price=complex_obj.booking_price,
                 source="public",
             )
     except IntegrityError:
         messages.error(request, "Ese horario acaba de ser reservado por otra persona. Elegí otro.")
         return redirect(back)
 
+    notify_court_booking(booking)
     messages.success(request, "¡Turno confirmado! Te esperamos.")
     return redirect("turno_confirmado", code=booking.code)
 
 
 def turno_confirmado(request, code):
     booking = get_object_or_404(CourtBooking.objects.select_related("complex", "court"), code=code.upper())
+    whatsapp_url = ""
+    if booking.complex.whatsapp_phone and booking.status == "booked":
+        whatsapp_url = _wa_url(
+            booking.complex.whatsapp_phone,
+            (
+                f"Hola, confirmo mi turno {booking.code} en {booking.complex.name}: "
+                f"{booking.court.name}, {booking.date:%d/%m/%Y} de "
+                f"{booking.start_time:%H:%M} a {booking.end_time:%H:%M}. "
+                f"({booking.customer_name})"
+            ),
+        )
     return render(
         request,
         "turno_confirmado.html",
         {
             "public_section": "turnos",
             "booking": booking,
+            "whatsapp_url": whatsapp_url,
             "can_cancel": booking.status == "booked"
             and not schedule_service.is_slot_past(booking.date, booking.start_time),
         },
@@ -2136,7 +2198,7 @@ def _turnos_complex(request):
 
 @login_required
 def panel_turnos(request):
-    """Agenda del día: ocupación, carga manual, bloqueos y cancelaciones."""
+    """Agenda del día: ocupación, carga manual, bloqueos, cobros y cancelaciones."""
     complexes, selected = _turnos_complex(request)
     today = timezone.localdate()
     day = _parse_date(request.GET.get("fecha"), today)
@@ -2144,6 +2206,27 @@ def panel_turnos(request):
     bookings = (
         schedule_service.bookings_for_day(selected, day, include_cancelled=True) if selected else []
     )
+
+    day_total = Decimal("0")
+    day_paid = Decimal("0")
+    for booking in bookings:
+        if booking.status == "cancelled":
+            continue
+        day_total += booking.price or Decimal("0")
+        if booking.is_paid:
+            day_paid += booking.price or Decimal("0")
+        if booking.customer_phone and booking.status == "booked":
+            booking.wa_url = _wa_url(
+                booking.customer_phone,
+                (
+                    f"Hola {booking.customer_name}, te confirmamos el turno en {booking.complex.name}: "
+                    f"{booking.court.name}, {booking.date:%d/%m} de "
+                    f"{booking.start_time:%H:%M} a {booking.end_time:%H:%M}."
+                ),
+            )
+        else:
+            booking.wa_url = ""
+
     return render(
         request,
         "panel/turnos.html",
@@ -2156,6 +2239,8 @@ def panel_turnos(request):
             "next_day": day + timedelta(days=1),
             "board": board,
             "bookings": bookings,
+            "day_total": day_total,
+            "day_paid": day_paid,
         },
     )
 
@@ -2209,6 +2294,16 @@ def panel_turno_accion(request):
     if day is not None:
         back += f"&fecha={day.isoformat()}"
 
+    if action in ("marcar_pagado", "marcar_pendiente"):
+        booking = get_object_or_404(CourtBooking, pk=request.POST.get("turno_id") or 0, complex=complex_obj)
+        booking.is_paid = action == "marcar_pagado"
+        booking.save(update_fields=["is_paid"])
+        messages.success(
+            request,
+            "Turno marcado como abonado." if booking.is_paid else "Turno marcado como pendiente de pago.",
+        )
+        return redirect(back)
+
     if action == "cancelar":
         booking = get_object_or_404(CourtBooking, pk=request.POST.get("turno_id") or 0, complex=complex_obj)
         if booking.status in ("booked", "blocked"):
@@ -2258,6 +2353,7 @@ def panel_turno_accion(request):
                 customer_name=name[:80] if action == "reservar" else "",
                 customer_phone=phone[:40] if action == "reservar" else "",
                 note=note[:140],
+                price=complex_obj.booking_price if action == "reservar" else 0,
                 source="panel",
                 created_by=request.user,
             )
@@ -2270,12 +2366,27 @@ def panel_turno_accion(request):
 
 
 @login_required
+def panel_turnos_ajustes(request):
+    """Precio del turno, datos de cobro (Mercado Pago) y aviso por WhatsApp."""
+    complexes, selected = _turnos_complex(request)
+    return render(
+        request,
+        "panel/turnos_ajustes.html",
+        {
+            "complexes": complexes,
+            "selected_complex": selected,
+        },
+    )
+
+
+@login_required
 @require_POST
 def panel_horarios_accion(request):
     complex_obj = get_object_or_404(Complex, slug=(request.POST.get("complejo") or ""))
     access.require_complex_access(request.user, complex_obj)
     action = request.POST.get("accion")
     back = f"{reverse('panel_turnos_horarios')}?complejo={complex_obj.slug}"
+    ajustes_back = f"{reverse('panel_turnos_ajustes')}?complejo={complex_obj.slug}"
 
     if action == "guardar_horario":
         day_type = request.POST.get("tipo_dia")
@@ -2351,6 +2462,43 @@ def panel_horarios_accion(request):
         )
         override.delete()
         messages.success(request, "Fecha especial eliminada.")
+
+    elif action == "guardar_ajustes":
+        price_raw = (request.POST.get("precio") or "").strip().replace(",", ".")
+        try:
+            price = Decimal(price_raw or "0")
+        except InvalidOperation:
+            price = Decimal("-1")
+        if price < 0:
+            messages.error(request, "El precio del turno no es válido.")
+            return redirect(ajustes_back)
+        mp_link = (request.POST.get("mp_link") or "").strip()
+        if mp_link and not mp_link.startswith(("http://", "https://")):
+            mp_link = "https://" + mp_link
+        if mp_link:
+            try:
+                URLValidator()(mp_link)
+            except ValidationError:
+                messages.error(request, "El link de Mercado Pago no parece válido.")
+                return redirect(ajustes_back)
+        complex_obj.booking_price = price.quantize(Decimal("0.01"))
+        complex_obj.mp_alias = (request.POST.get("mp_alias") or "").strip()[:80]
+        complex_obj.mp_holder = (request.POST.get("mp_holder") or "").strip()[:80]
+        complex_obj.mp_link = mp_link
+        complex_obj.whatsapp_phone = (request.POST.get("whatsapp_phone") or "").strip()[:40]
+        complex_obj.whatsapp_apikey = (request.POST.get("whatsapp_apikey") or "").strip()[:60]
+        complex_obj.save(
+            update_fields=[
+                "booking_price",
+                "mp_alias",
+                "mp_holder",
+                "mp_link",
+                "whatsapp_phone",
+                "whatsapp_apikey",
+            ]
+        )
+        messages.success(request, "Ajustes del turnero guardados.")
+        return redirect(ajustes_back)
 
     else:
         messages.error(request, "Acción desconocida.")

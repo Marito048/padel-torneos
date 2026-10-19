@@ -47,6 +47,7 @@ urlpatterns = [
     path("gestion/turnos/horarios/", views.panel_turnos_horarios, name="panel_turnos_horarios"),
     path("gestion/turnos/accion/", views.panel_turno_accion, name="panel_turno_accion"),
     path("gestion/turnos/horarios/accion/", views.panel_horarios_accion, name="panel_horarios_accion"),
+    path("gestion/turnos/ajustes/", views.panel_turnos_ajustes, name="panel_turnos_ajustes"),
     path("gestion/<slug:slug>/", views.tournament_manage, name="tournament_manage"),
     path("gestion/<slug:slug>/configuracion/", views.tournament_form, name="tournament_edit"),
     path("gestion/<slug:slug>/eliminar/", views.panel_tournament_delete, name="panel_tournament_delete"),

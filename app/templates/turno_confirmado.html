@@ -25,9 +25,55 @@
 
   <div class="padel-actions">
     <a class="btn btn--primary" href="{% url 'turnos' %}?complejo={{ booking.complex.slug }}&fecha={{ booking.date|date:'Y-m-d' }}">Sacar otro turno</a>
+    {% if whatsapp_url %}
+      <a class="btn btn--whatsapp" href="{{ whatsapp_url }}" target="_blank" rel="noopener">Confirmar por WhatsApp</a>
+    {% endif %}
     {% if can_cancel %}
       <a class="btn btn--danger" href="{% url 'turno_cancelar' booking.code %}">Cancelar este turno</a>
     {% endif %}
   </div>
 </article>
+
+{% if booking.status == "booked" and booking.price > 0 %}
+  <article class="padel-card">
+    <h2>Pago del turno: ${{ booking.price|floatformat:"-2" }}</h2>
+    {% if booking.is_paid %}
+      <p><span class="status-pill status-pill--done">Abonado</span> ¡Gracias!</p>
+    {% else %}
+      <p><span class="status-pill status-pill--pending">Pago pendiente</span></p>
+      {% if booking.complex.mp_alias or booking.complex.mp_link %}
+        <p class="muted">Podés abonarlo por Mercado Pago:</p>
+        {% if booking.complex.mp_alias %}
+          <p class="mp-alias">
+            Alias: <strong>{{ booking.complex.mp_alias }}</strong>
+            {% if booking.complex.mp_holder %}<span class="muted">({{ booking.complex.mp_holder }})</span>{% endif %}
+            <button class="btn btn--secondary btn--sm" type="button" data-copy="{{ booking.complex.mp_alias }}">Copiar</button>
+          </p>
+        {% endif %}
+        {% if booking.complex.mp_link %}
+          <p><a class="btn btn--primary" href="{{ booking.complex.mp_link }}" target="_blank" rel="noopener">Pagar con Mercado Pago</a></p>
+        {% endif %}
+        <p class="help">Cuando lo abones, avisale al complejo por WhatsApp para que lo registren.</p>
+      {% else %}
+        <p class="help">El complejo todavía no cargó los datos de cobro; coordiná el pago al llegar o por WhatsApp.</p>
+      {% endif %}
+    {% endif %}
+  </article>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll("[data-copy]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var value = button.getAttribute("data-copy") || "";
+      if (!navigator.clipboard) { return; }
+      navigator.clipboard.writeText(value).then(function () {
+        var original = button.textContent;
+        button.textContent = "¡Copiado!";
+        setTimeout(function () { button.textContent = original; }, 1500);
+      });
+    });
+  });
+</script>
 {% endblock %}

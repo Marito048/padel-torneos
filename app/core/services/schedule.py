@@ -154,6 +154,59 @@ def bookings_for_day(complex_obj, day: date_cls, *, include_cancelled: bool = Fa
     return list(qs)
 
 
+def month_calendar(
+    complex_obj,
+    month: date_cls,
+    *,
+    today: date_cls,
+    last_day: date_cls,
+    selected: date_cls | None = None,
+) -> list[list[dict]]:
+    """Grilla del mes (semanas que empiezan el lunes) con el estado de cada día.
+
+    Cada celda trae: ``date``, ``in_month``, ``selectable`` (dentro de la ventana
+    de reserva), ``is_open`` (el complejo atiende), ``is_today`` e ``is_selected``.
+    """
+    first = month.replace(day=1)
+    next_month = (first + timedelta(days=32)).replace(day=1)
+    last = next_month - timedelta(days=1)
+
+    schedules = {schedule.day_type: schedule for schedule in CourtSchedule.objects.filter(complex=complex_obj)}
+    overrides = {
+        override.date: override
+        for override in CourtDateOverride.objects.filter(complex=complex_obj, date__range=(first, last))
+    }
+
+    def is_open_on(day: date_cls) -> bool:
+        override = overrides.get(day)
+        if override is not None:
+            return not override.is_closed
+        schedule = schedules.get(day_type_for(day))
+        return schedule.is_open if schedule else True
+
+    weeks: list[list[dict]] = []
+    cursor = first - timedelta(days=first.weekday())
+    while cursor <= last:
+        week = []
+        for _ in range(7):
+            in_month = cursor.month == first.month and cursor.year == first.year
+            selectable = in_month and today <= cursor <= last_day
+            week.append(
+                {
+                    "date": cursor,
+                    "number": cursor.day,
+                    "in_month": in_month,
+                    "selectable": selectable,
+                    "is_open": is_open_on(cursor),
+                    "is_today": cursor == today,
+                    "is_selected": cursor == selected,
+                }
+            )
+            cursor += timedelta(days=1)
+        weeks.append(week)
+    return weeks
+
+
 def board_for_day(complex_obj, day: date_cls, *, now=None) -> dict:
     """Tablero listo para plantillas: filas por horario con una celda por cancha."""
     config = day_config(complex_obj, day)

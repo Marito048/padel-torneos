@@ -6,6 +6,8 @@ desde el panel (reservas manuales, bloqueos y configuración de horarios).
 """
 
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
@@ -367,3 +369,258 @@ class PanelTurnosTests(TurnosFixtureMixin, TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Ana")
+
+
+class MonthCalendarTests(TurnosFixtureMixin, TestCase):
+    def setUp(self):
+        self.complex = self.make_complex()
+
+    def cells_for(self, month_start, today, last_day, selected=None):
+        weeks = schedule_service.month_calendar(
+            self.complex, month_start, today=today, last_day=last_day, selected=selected
+        )
+        return {cell["date"]: cell for week in weeks for cell in week}
+
+    def test_weeks_start_on_monday_and_mark_out_of_month_days(self):
+        weeks = schedule_service.month_calendar(
+            self.complex, date(2030, 1, 1), today=date(2030, 1, 1), last_day=date(2030, 3, 31)
+        )
+        # 2030-01-01 es martes: la primera semana arranca el lunes 31/12/2029.
+        self.assertEqual(weeks[0][0]["date"], date(2029, 12, 31))
+        self.assertFalse(weeks[0][0]["in_month"])
+        self.assertEqual(weeks[0][1]["date"], date(2030, 1, 1))
+        self.assertTrue(weeks[0][1]["in_month"])
+        # La última semana cierra el domingo 03/02/2030.
+        self.assertEqual(weeks[-1][-1]["date"], date(2030, 2, 3))
+
+    def test_selectable_only_inside_booking_window(self):
+        today = date(2030, 1, 7)
+        last_day = date(2030, 1, 20)
+        cells = self.cells_for(date(2030, 1, 1), today, last_day)
+        self.assertFalse(cells[date(2030, 1, 6)]["selectable"])
+        self.assertTrue(cells[date(2030, 1, 7)]["selectable"])
+        self.assertTrue(cells[date(2030, 1, 20)]["selectable"])
+        self.assertFalse(cells[date(2030, 1, 21)]["selectable"])
+
+    def test_closed_override_and_closed_day_type_mark_cells(self):
+        self.make_schedule(self.complex, day_type="sunday", is_open=False)
+        CourtDateOverride.objects.create(complex=self.complex, date=MONDAY, is_closed=True)
+        cells = self.cells_for(date(2030, 1, 1), date(2030, 1, 1), date(2030, 1, 31))
+        self.assertFalse(cells[date(2030, 1, 7)]["is_open"])  # lunes cerrado por fecha especial
+        self.assertTrue(cells[date(2030, 1, 8)]["is_open"])  # martes normal
+        self.assertFalse(cells[date(2030, 1, 13)]["is_open"])  # domingo cerrado por configuración
+
+    def test_today_and_selected_flags(self):
+        cells = self.cells_for(date(2030, 1, 1), date(2030, 1, 7), date(2030, 1, 31), selected=date(2030, 1, 9))
+        self.assertTrue(cells[date(2030, 1, 7)]["is_today"])
+        self.assertTrue(cells[date(2030, 1, 9)]["is_selected"])
+        self.assertFalse(cells[date(2030, 1, 8)]["is_selected"])
+
+
+class PaymentAndWhatsAppTests(TurnosFixtureMixin, TestCase):
+    """Precio del turno, datos de Mercado Pago y avisos por WhatsApp."""
+
+    def setUp(self):
+        self.complex = self.make_complex()
+        self.court = self.make_court(self.complex)
+        self.day = timezone.localdate() + timedelta(days=5)
+        self.make_schedule(self.complex, day_type=schedule_service.day_type_for(self.day))
+
+    def reserve(self, **overrides):
+        data = {
+            "complejo": self.complex.slug,
+            "fecha": self.day.isoformat(),
+            "cancha": self.court.pk,
+            "hora": "09:00",
+            "nombre": "Ana Pérez",
+            "telefono": "2215551234",
+            "nota": "",
+        }
+        data.update(overrides)
+        return self.client.post(reverse("turno_reservar"), data)
+
+    def test_public_booking_snapshots_the_price_and_shows_payment_data(self):
+        self.complex.booking_price = Decimal("7500")
+        self.complex.mp_alias = "padel.principal"
+        self.complex.mp_holder = "Juan Pérez"
+        self.complex.save(update_fields=["booking_price", "mp_alias", "mp_holder"])
+        self.reserve()
+        booking = CourtBooking.objects.get()
+        self.assertEqual(booking.price, Decimal("7500.00"))
+        response = self.client.get(reverse("turno_confirmado", args=[booking.code]))
+        self.assertContains(response, "Pago del turno: $7500")
+        self.assertContains(response, "padel.principal")
+        self.assertContains(response, "Pago pendiente")
+
+    def test_price_shown_in_booking_form(self):
+        self.complex.booking_price = Decimal("6000")
+        self.complex.save(update_fields=["booking_price"])
+        response = self.client.get(
+            reverse("turnos"),
+            {"complejo": self.complex.slug, "fecha": self.day.isoformat(), "cancha": self.court.pk, "hora": "09:00"},
+        )
+        self.assertContains(response, "Precio del turno: <strong>$6000")
+
+    def test_confirmation_shows_whatsapp_button(self):
+        self.complex.whatsapp_phone = "221 555 1234"
+        self.complex.save(update_fields=["whatsapp_phone"])
+        self.reserve()
+        booking = CourtBooking.objects.get()
+        response = self.client.get(reverse("turno_confirmado", args=[booking.code]))
+        # Los números locales de 10 dígitos se normalizan con el 549.
+        self.assertContains(response, "https://wa.me/5492215551234")
+        self.assertContains(response, "Confirmar por WhatsApp")
+
+    def test_no_whatsapp_button_without_complex_phone(self):
+        self.reserve()
+        booking = CourtBooking.objects.get()
+        response = self.client.get(reverse("turno_confirmado", args=[booking.code]))
+        self.assertNotContains(response, "wa.me")
+
+    def test_booking_notifies_the_complex_whatsapp(self):
+        self.complex.whatsapp_phone = "5492215551111"
+        self.complex.whatsapp_apikey = "1234"
+        self.complex.save(update_fields=["whatsapp_phone", "whatsapp_apikey"])
+        with mock.patch("core.notifications._send_whatsapp") as sender:
+            self.reserve()
+        booking = CourtBooking.objects.get()
+        sender.assert_called_once()
+        args, kwargs = sender.call_args
+        self.assertEqual(kwargs.get("phone"), "5492215551111")
+        self.assertEqual(kwargs.get("apikey"), "1234")
+        self.assertIn(booking.court.name, args[0])
+        self.assertIn(booking.code, args[0])
+
+    def test_panel_mark_paid_and_day_totals(self):
+        self.complex.booking_price = Decimal("8000")
+        self.complex.save(update_fields=["booking_price"])
+        admin = User.objects.create_superuser("admin-cobros", password="clave-segura-123")
+        self.client.force_login(admin)
+        self.client.post(
+            reverse("panel_turno_accion"),
+            {
+                "complejo": self.complex.slug,
+                "fecha": self.day.isoformat(),
+                "accion": "reservar",
+                "cancha": self.court.pk,
+                "hora": "09:00",
+                "nombre": "Cliente Panel",
+                "telefono": "2215550000",
+                "nota": "",
+            },
+        )
+        booking = CourtBooking.objects.get()
+        self.assertEqual(booking.price, Decimal("8000.00"))
+
+        # Sin cobrar: la agenda muestra el total reservado y el estado pendiente.
+        response = self.client.get(
+            reverse("panel_turnos"), {"complejo": self.complex.slug, "fecha": self.day.isoformat()}
+        )
+        self.assertContains(response, "Reservado del día")
+        self.assertContains(response, "Pendiente")
+
+        self.client.post(
+            reverse("panel_turno_accion"),
+            {
+                "complejo": self.complex.slug,
+                "fecha": self.day.isoformat(),
+                "accion": "marcar_pagado",
+                "turno_id": booking.pk,
+            },
+        )
+        booking.refresh_from_db()
+        self.assertTrue(booking.is_paid)
+        response = self.client.get(
+            reverse("panel_turnos"), {"complejo": self.complex.slug, "fecha": self.day.isoformat()}
+        )
+        self.assertContains(response, "Abonado")
+        self.assertContains(response, "$8000")
+
+    def test_panel_whatsapp_notify_link_for_customer(self):
+        admin = User.objects.create_superuser("admin-avisos", password="clave-segura-123")
+        self.client.force_login(admin)
+        self.make_booking(
+            self.complex, self.court, self.day, time(10, 30), customer_name="Ana", customer_phone="2215551234"
+        )
+        response = self.client.get(
+            reverse("panel_turnos"), {"complejo": self.complex.slug, "fecha": self.day.isoformat()}
+        )
+        self.assertContains(response, "https://wa.me/5492215551234")
+        self.assertContains(response, "Avisar")
+
+    def test_ajustes_saved_from_panel(self):
+        admin = User.objects.create_superuser("admin-ajustes", password="clave-segura-123")
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse("panel_horarios_accion"),
+            {
+                "complejo": self.complex.slug,
+                "accion": "guardar_ajustes",
+                "precio": "8000,50",
+                "mp_alias": "padel.principal",
+                "mp_holder": "Juan Pérez",
+                "mp_link": "mpago.la/abc",
+                "whatsapp_phone": "5492215551234",
+                "whatsapp_apikey": "1234",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.complex.refresh_from_db()
+        self.assertEqual(self.complex.booking_price, Decimal("8000.50"))
+        self.assertEqual(self.complex.mp_alias, "padel.principal")
+        self.assertEqual(self.complex.mp_holder, "Juan Pérez")
+        self.assertEqual(self.complex.mp_link, "https://mpago.la/abc")
+        self.assertEqual(self.complex.whatsapp_phone, "5492215551234")
+        self.assertEqual(self.complex.whatsapp_apikey, "1234")
+
+    def test_ajustes_reject_invalid_price(self):
+        admin = User.objects.create_superuser("admin-ajustes-2", password="clave-segura-123")
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse("panel_horarios_accion"),
+            {"complejo": self.complex.slug, "accion": "guardar_ajustes", "precio": "-3"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.complex.refresh_from_db()
+        self.assertEqual(self.complex.booking_price, Decimal("0.00"))
+
+    def test_ajustes_page_requires_login(self):
+        response = self.client.get(reverse("panel_turnos_ajustes"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("account_login"), response.url)
+
+    def test_ajustes_page_renders(self):
+        admin = User.objects.create_superuser("admin-ajustes-3", password="clave-segura-123")
+        self.client.force_login(admin)
+        response = self.client.get(reverse("panel_turnos_ajustes"), {"complejo": self.complex.slug})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Precio y avisos")
+        self.assertContains(response, "Guardar ajustes")
+
+
+class PublicCalendarViewTests(TurnosFixtureMixin, TestCase):
+    def setUp(self):
+        self.complex = self.make_complex()
+        self.court = self.make_court(self.complex)
+        self.today = timezone.localdate()
+        self.make_schedule(self.complex, day_type=schedule_service.day_type_for(self.today))
+
+    def test_calendar_renders_and_links_days(self):
+        response = self.client.get(reverse("turnos"), {"complejo": self.complex.slug})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "calendar__grid")
+        self.assertContains(response, f"fecha={self.today.isoformat()}")
+
+    def test_calendar_marks_closed_days(self):
+        CourtSchedule.objects.all().delete()
+        for day_type, _ in CourtSchedule.DAY_TYPE:
+            self.make_schedule(self.complex, day_type=day_type, is_open=False)
+        response = self.client.get(reverse("turnos"), {"complejo": self.complex.slug})
+        self.assertContains(response, "is-closed")
+
+    def test_calendar_navigates_between_months(self):
+        response = self.client.get(reverse("turnos"), {"complejo": self.complex.slug})
+        next_month = (self.today.replace(day=1) + timedelta(days=32)).replace(day=1)
+        # La ventana de reserva (60 días) siempre toca el mes siguiente.
+        self.assertContains(response, f"mes={next_month.strftime('%Y-%m')}")
+

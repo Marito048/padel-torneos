@@ -86,6 +86,22 @@ class Complex(models.Model):
         related_name="complexes",
         verbose_name="Usuarios autorizados",
     )
+    # Configuración de turnos de cancha (precio, cobro y avisos).
+    booking_price = models.DecimalField(
+        "Precio del turno", max_digits=10, decimal_places=2, default=0,
+        help_text="0 = los turnos no tienen precio.",
+    )
+    mp_alias = models.CharField("Alias o CVU de Mercado Pago", max_length=80, blank=True)
+    mp_holder = models.CharField("Titular de la cuenta", max_length=80, blank=True)
+    mp_link = models.URLField("Link de pago de Mercado Pago", max_length=300, blank=True)
+    whatsapp_phone = models.CharField(
+        "WhatsApp del complejo", max_length=40, blank=True,
+        help_text="Con código de país (ej. 5492215551234). Recibe el aviso de cada reserva.",
+    )
+    whatsapp_apikey = models.CharField(
+        "CallMeBot API key", max_length=60, blank=True,
+        help_text="Clave que devuelve CallMeBot para ese WhatsApp (opcional).",
+    )
     created_at = models.DateTimeField("Creado", auto_now_add=True)
 
     class Meta:
@@ -383,6 +399,11 @@ class CourtBooking(models.Model):
     customer_name = models.CharField("Cliente", max_length=80, blank=True)
     customer_phone = models.CharField("Teléfono", max_length=40, blank=True)
     note = models.CharField("Nota", max_length=140, blank=True)
+    price = models.DecimalField(
+        "Precio del turno", max_digits=10, decimal_places=2, default=0,
+        help_text="Precio vigente al momento de reservar.",
+    )
+    is_paid = models.BooleanField("Abonado", default=False)
     code = models.CharField("Código", max_length=12, unique=True, blank=True)
     source = models.CharField("Origen", max_length=10, choices=SOURCE, default="public")
     created_by = models.ForeignKey(

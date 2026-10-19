@@ -8,6 +8,7 @@
   {% if board %}
     <p class="muted">
       Elegí una cancha y un horario libre. Los turnos duran {{ board.config.slot_minutes }} minutos.
+      {% if selected_complex.booking_price > 0 %}Precio del turno: ${{ selected_complex.booking_price|floatformat:"-2" }}.{% endif %}
     </p>
   {% else %}
     <p class="muted">Elegí el complejo y el día para ver los horarios libres.</p>
@@ -25,22 +26,46 @@
         {% endfor %}
       </select>
     </label>
-    <label>Día
-      <input type="date" name="fecha" value="{{ day|date:'Y-m-d' }}" min="{{ today|date:'Y-m-d' }}" onchange="this.form.submit()">
-    </label>
     <noscript><button class="btn btn--primary btn--sm" type="submit">Ver turnos</button></noscript>
   </form>
 
-  <nav class="day-tabs" aria-label="Elegir día">
-    {% for d in days %}
-      <a class="day-tab{% if d == day %} active{% endif %}" href="{% url 'turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ d|date:'Y-m-d' }}">
-        <span>{{ d|date:"D" }}</span>
-        <strong>{{ d|date:"d/m" }}</strong>
-      </a>
-    {% endfor %}
-  </nav>
+  {% if calendar %}
+    <div class="calendar">
+      <div class="calendar__head">
+        {% if calendar.prev %}
+          <a class="calendar__nav" href="{% url 'turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}&mes={{ calendar.prev|date:'Y-m' }}" aria-label="Mes anterior">‹</a>
+        {% else %}
+          <span class="calendar__nav is-off" aria-hidden="true">‹</span>
+        {% endif %}
+        <strong class="calendar__title">{{ calendar.month|date:"F Y" }}</strong>
+        {% if calendar.next %}
+          <a class="calendar__nav" href="{% url 'turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}&mes={{ calendar.next|date:'Y-m' }}" aria-label="Mes siguiente">›</a>
+        {% else %}
+          <span class="calendar__nav is-off" aria-hidden="true">›</span>
+        {% endif %}
+      </div>
+      <div class="calendar__dow" aria-hidden="true">
+        <span>lun</span><span>mar</span><span>mié</span><span>jue</span><span>vie</span><span>sáb</span><span>dom</span>
+      </div>
+      <div class="calendar__grid">
+        {% for week in calendar.weeks %}
+          {% for cell in week %}
+            {% if cell.selectable and cell.is_open %}
+              <a class="cal-cell{% if cell.is_selected %} is-selected{% endif %}{% if cell.is_today %} is-today{% endif %}"
+                 href="{% url 'turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ cell.date|date:'Y-m-d' }}&mes={{ calendar.month|date:'Y-m' }}#horarios">{{ cell.number }}</a>
+            {% else %}
+              <span class="cal-cell{% if not cell.selectable %} is-out{% elif not cell.is_open %} is-closed{% endif %}{% if cell.is_selected %} is-selected{% endif %}{% if cell.is_today %} is-today{% endif %}"
+                    {% if cell.selectable and not cell.is_open %}title="Cerrado"{% endif %}>{{ cell.number }}</span>
+            {% endif %}
+          {% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+    <p class="muted calendar__hint">Elegí un día en el calendario. Los días atenuados no están disponibles.</p>
+  {% endif %}
 
   {% if board %}
+    <h2 class="turnos-day-title">{{ day|date:"l d/m/Y" }}</h2>
     {% if not board.config.is_open %}
       <p class="alert alert--info">Ese día el complejo está cerrado{% if board.config.override.note %} ({{ board.config.override.note }}){% endif %}. Probá con otra fecha.</p>
     {% elif not board.courts %}
@@ -48,7 +73,7 @@
     {% elif not board.rows %}
       <p class="alert alert--info">No hay turnos configurados para ese día. Probá con otra fecha.</p>
     {% else %}
-      <div class="turnos-board">
+      <div class="turnos-board" id="horarios">
         <table class="data-table">
           <thead>
             <tr>
@@ -97,6 +122,12 @@
         {{ selected_complex.name }} · {{ day|date:"l d/m/Y" }} ·
         {{ selected_slot.start|time:"H:i" }} a {{ selected_slot.end|time:"H:i" }} · {{ selected_slot.court.name }}
       </p>
+      {% if selected_complex.booking_price > 0 %}
+        <p class="turno-price">
+          Precio del turno: <strong>${{ selected_complex.booking_price|floatformat:"-2" }}</strong>
+          {% if selected_complex.mp_alias %}· se abona por Mercado Pago (alias {{ selected_complex.mp_alias }}){% endif %}
+        </p>
+      {% endif %}
       <form method="post" action="{% url 'turno_reservar' %}" class="form-grid">
         {% csrf_token %}
         <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
