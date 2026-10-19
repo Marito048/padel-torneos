@@ -1,0 +1,58 @@
+{% load static %}<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Pádel Server{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
+</head>
+<body class="padel-page padel-page--public">
+  <header class="padel-topbar">
+    <div class="padel-brand">
+      <span class="padel-badge">PA</span>
+      <span>Pádel Server</span>
+    </div>
+    <nav class="pub-nav" aria-label="Secciones">
+      <a href="{% url 'home' %}"{% if public_section == 'inicio' %} class="active"{% endif %}>Inicio</a>
+      <a href="{% url 'turnos' %}"{% if public_section == 'turnos' %} class="active"{% endif %}>Turnos</a>
+      <a href="{% url 'public_tournaments' %}"{% if public_section == 'torneos' %} class="active"{% endif %}>Torneos</a>
+    </nav>
+    <div class="padel-actions">
+      {% if user.is_authenticated %}
+        <a class="btn btn--secondary btn--sm" href="{% url 'tournament_select' %}">Panel de gestión</a>
+        <form method="post" action="{% url 'account_logout' %}" class="inline-form">{% csrf_token %}<button class="btn btn--secondary btn--sm" type="submit">Salir</button></form>
+      {% else %}
+        <a class="btn btn--secondary btn--sm" href="{% url 'account_login' %}">Ingresar</a>
+      {% endif %}
+    </div>
+    <details class="panel-collapse panel-collapse--actions">
+      <summary class="panel-collapse__toggle">Menú</summary>
+      <div class="panel-collapse__body">
+        <a class="btn btn--secondary btn--sm" href="{% url 'home' %}">Inicio</a>
+        <a class="btn btn--secondary btn--sm" href="{% url 'turnos' %}">Turnos</a>
+        <a class="btn btn--secondary btn--sm" href="{% url 'public_tournaments' %}">Torneos</a>
+        {% if user.is_authenticated %}
+          <a class="btn btn--secondary btn--sm" href="{% url 'tournament_select' %}">Panel de gestión</a>
+          <form method="post" action="{% url 'account_logout' %}" class="inline-form">{% csrf_token %}<button class="btn btn--secondary btn--sm" type="submit">Salir</button></form>
+        {% else %}
+          <a class="btn btn--secondary btn--sm" href="{% url 'account_login' %}">Ingresar</a>
+        {% endif %}
+      </div>
+    </details>
+  </header>
+
+  <main class="padel-shell">
+    {% if messages %}
+      <div class="messages" role="status" aria-live="polite">
+        {% for message in messages %}
+          <div class="alert alert--{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{% static 'core/panel.js' %}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

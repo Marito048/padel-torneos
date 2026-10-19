@@ -1,0 +1,83 @@
+{% extends "base_public.html" %}
+
+{% block title %}Reservá tu cancha · Pádel Server{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+  <h1>Reservá tu cancha de pádel</h1>
+  <p>Elegí el día, la cancha y la hora: en un minuto tenés tu turno. Sin registrarte.</p>
+  <div class="padel-actions">
+    <a class="btn btn--accent" href="{% url 'turnos' %}">Sacar un turno</a>
+    <a class="btn btn--secondary" href="{% url 'public_tournaments' %}">Ver torneos</a>
+  </div>
+</section>
+
+<section class="panel-section">
+  <h2>¿Cómo funciona?</h2>
+</section>
+<div class="padel-grid">
+  <article class="padel-card">
+    <h3>1. Elegí día, cancha y hora</h3>
+    <p>Mirá los turnos libres de cada cancha en los próximos 14 días.</p>
+  </article>
+  <article class="padel-card">
+    <h3>2. Dejá tu nombre y WhatsApp</h3>
+    <p>Sin usuario ni contraseña. Así el complejo sabe quién viene.</p>
+  </article>
+  <article class="padel-card">
+    <h3>3. Listo</h3>
+    <p>Te guardamos un código para consultar o cancelar el turno.</p>
+  </article>
+</div>
+
+{% if complexes %}
+  <section class="panel-section">
+    <h2>Complejos</h2>
+  </section>
+  <div class="padel-grid">
+    {% for complex in complexes %}
+      <article class="padel-card">
+        <h3>{{ complex.name }}</h3>
+        <p class="muted">{% if complex.address %}{{ complex.address }}{% endif %}{% if complex.city %}{% if complex.address %} · {% endif %}{{ complex.city }}{% endif %}</p>
+        <a class="btn btn--primary" href="{% url 'turnos' %}?complejo={{ complex.slug }}">Ver turnos libres</a>
+      </article>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if tournaments %}
+  <section class="panel-section">
+    <h2>Próximos torneos</h2>
+  </section>
+  <div class="padel-grid">
+    {% for t in tournaments %}
+      <article class="padel-card">
+        <h3>{{ t.name }}</h3>
+        <p class="muted">{% if t.complex %}{{ t.complex.name }} · {% endif %}{{ t.get_category_display }} · {{ t.start_date }}</p>
+        <p><span class="status-pill {% if t.status == 'running' %}status-pill--running{% else %}status-pill--pending{% endif %}">{{ t.get_status_display }}</span></p>
+        <a class="btn btn--secondary" href="{% url 'public_tournament_detail' t.slug %}">Ver fixture</a>
+      </article>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if user.is_authenticated %}
+  <section class="panel-section">
+    <h2>Panel de gestión</h2>
+  </section>
+  <article class="padel-card padel-card--green">
+    <h3>Estás con sesión iniciada</h3>
+    <p>Entrá al panel para administrar torneos, turnos, parejas y resultados.</p>
+    <a class="btn btn--secondary" href="{% url 'tournament_select' %}">Ir al panel</a>
+  </article>
+{% else %}
+  <section class="panel-section">
+    <h2>¿Trabajás en el complejo?</h2>
+  </section>
+  <article class="padel-card">
+    <h3>Acceso para usuarios autorizados</h3>
+    <p class="muted">El panel de gestión es para el personal del complejo: torneos, turnos, parejas y resultados.</p>
+    <a class="btn btn--secondary" href="{% url 'account_login' %}">Ingresar al panel</a>
+  </article>
+{% endif %}
+{% endblock %}

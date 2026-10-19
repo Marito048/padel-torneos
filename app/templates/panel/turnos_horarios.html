@@ -1,0 +1,158 @@
+{% extends "panel/base_panel.html" %}
+
+{% block title %}Horarios de turnos{% endblock %}
+
+{% block content %}
+<section class="panel-section">
+  <h1>Horarios de turnos</h1>
+  <p class="muted">Definí desde qué hora arrancan los turnos, el cierre y la duración. Los feriados y fechas especiales pueden pisar la configuración del día.</p>
+  <div class="padel-actions">
+    <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Volver a la agenda</a>
+  </div>
+</section>
+
+{% if not complexes %}
+  <p class="alert alert--info">Tu usuario todavía no tiene complejos asignados.</p>
+{% else %}
+  <form method="get" action="{% url 'panel_turnos_horarios' %}" class="turnos-filter">
+    <label>Complejo
+      <select name="complejo" onchange="this.form.submit()">
+        {% for complex in complexes %}
+          <option value="{{ complex.slug }}"{% if selected_complex and complex.pk == selected_complex.pk %} selected{% endif %}>{{ complex.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn btn--primary btn--sm" type="submit">Ver</button></noscript>
+  </form>
+
+  <div class="padel-grid">
+    {% for row in day_type_rows %}
+      <article class="padel-card">
+        <h2>{{ row.label }}</h2>
+        <form method="post" action="{% url 'panel_horarios_accion' %}" class="form-grid">
+          {% csrf_token %}
+          <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+          <input type="hidden" name="accion" value="guardar_horario">
+          <input type="hidden" name="tipo_dia" value="{{ row.key }}">
+          <label class="check-field">
+            <input type="checkbox" name="abierto"{% if row.is_open %} checked{% endif %}> Abierto ese día
+          </label>
+          <label>Primer turno
+            <input type="time" name="desde" value="{{ row.start_time|time:'H:i' }}" required>
+          </label>
+          <label>Cierre
+            <input type="time" name="hasta" value="{{ row.end_time|time:'H:i' }}" required>
+          </label>
+          <label>Duración del turno (minutos)
+            <input type="number" name="duracion" min="30" max="240" step="5" value="{{ row.slot_minutes }}" required>
+          </label>
+          <div class="form-actions">
+            <button class="btn btn--primary" type="submit">Guardar horario</button>
+          </div>
+        </form>
+
+        <h3>Pausas</h3>
+        {% if row.pauses %}
+          <ul class="pause-list">
+            {% for pause in row.pauses %}
+              <li>
+                <span>{{ pause.start_time|time:"H:i" }} a {{ pause.end_time|time:"H:i" }}</span>
+                <form method="post" action="{% url 'panel_horarios_accion' %}" class="inline-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                  <input type="hidden" name="accion" value="quitar_pausa">
+                  <input type="hidden" name="pausa_id" value="{{ pause.pk }}">
+                  <button class="btn btn--xs btn--danger" type="submit">Quitar</button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="help">Sin pausas: los turnos corren seguido de principio a fin.</p>
+        {% endif %}
+
+        {% if row.schedule %}
+          <form method="post" action="{% url 'panel_horarios_accion' %}" class="inline-form pause-form">
+            {% csrf_token %}
+            <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+            <input type="hidden" name="accion" value="agregar_pausa">
+            <input type="hidden" name="horario_id" value="{{ row.schedule.pk }}">
+            <label>Desde <input type="time" name="desde" required></label>
+            <label>Hasta <input type="time" name="hasta" required></label>
+            <button class="btn btn--secondary btn--sm" type="submit">Agregar pausa</button>
+          </form>
+          <p class="help">Ejemplo: pausa de 13:30 a 14:30 y los turnos siguen 14:30, 16:00, 17:30…</p>
+        {% else %}
+          <p class="help">Guardá primero el horario para poder cargar pausas.</p>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+
+  <section class="panel-section">
+    <h2>Feriados y fechas especiales</h2>
+  </section>
+  <article class="padel-card">
+    <p class="help">Cerrá el complejo un feriado o fijale un horario distinto solo para esa fecha.</p>
+    <form method="post" action="{% url 'panel_horarios_accion' %}" class="form-grid">
+      {% csrf_token %}
+      <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+      <input type="hidden" name="accion" value="guardar_fecha">
+      <label>Fecha
+        <input type="date" name="fecha" required>
+      </label>
+      <label class="check-field">
+        <input type="checkbox" name="cerrado" checked> Cerrado todo el día
+      </label>
+      <label>Desde (si abre)
+        <input type="time" name="desde">
+      </label>
+      <label>Hasta (si abre)
+        <input type="time" name="hasta">
+      </label>
+      <label>Nota
+        <input type="text" name="nota" maxlength="120" placeholder="Ej: feriado nacional">
+      </label>
+      <div class="form-actions">
+        <button class="btn btn--primary" type="submit">Guardar fecha</button>
+      </div>
+    </form>
+  </article>
+
+  {% if overrides %}
+    <table class="data-table">
+      <thead>
+        <tr><th>Fecha</th><th>Estado</th><th>Horario</th><th>Nota</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for override in overrides %}
+          <tr>
+            <td>{{ override.date|date:"d/m/Y" }}</td>
+            <td>
+              {% if override.is_closed %}<span class="status-pill status-pill--pending">Cerrado</span>
+              {% else %}<span class="status-pill status-pill--done">Abierto</span>{% endif %}
+            </td>
+            <td>
+              {% if override.is_closed %}—
+              {% elif override.start_time and override.end_time %}{{ override.start_time|time:"H:i" }} a {{ override.end_time|time:"H:i" }}
+              {% else %}Horario habitual{% endif %}
+            </td>
+            <td>{{ override.note|default:"—" }}</td>
+            <td>
+              <form method="post" action="{% url 'panel_horarios_accion' %}" class="inline-form" data-confirm="¿Quitar esta fecha especial?">
+                {% csrf_token %}
+                <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                <input type="hidden" name="accion" value="quitar_fecha">
+                <input type="hidden" name="fecha_id" value="{{ override.pk }}">
+                <button class="btn btn--xs btn--danger" type="submit">Quitar</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="help">No hay fechas especiales cargadas.</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

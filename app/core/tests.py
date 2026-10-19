@@ -3025,9 +3025,18 @@ class AuthPagesTests(TestCase):
         self.assertContains(response, "por invitación")
         self.assertContains(response, "mismo email")
 
-    def test_home_redirects_anonymous_to_login(self):
+    def test_home_is_public_landing_with_booking_and_login(self):
         response = self.client.get("/")
-        self.assertRedirects(response, "/cuentas/login/", fetch_redirect_response=False)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sacar un turno")
+        self.assertContains(response, "/turnos/")
+        self.assertContains(response, "/cuentas/login/")
+
+    def test_home_shows_panel_link_for_authenticated_users(self):
+        self.client.force_login(self.user)
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Panel de gestión")
 
     def test_login_with_existing_credentials_still_works(self):
         response = self.client.post(

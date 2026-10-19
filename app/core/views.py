@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from datetime import date as date_cls, time as time_cls, timedelta
 from urllib.parse import quote
 
 from django.conf import settings
@@ -25,14 +26,34 @@ from django.db.models import Count, ProtectedError, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from core import access
-from core.models import Complex, Invitation, Match, Player, Registration, RegistrationRequest, Team, TemporaryPassword, Tournament, TournamentPlayer, Zone, ZoneTeam
+from core.models import (
+    Complex,
+    Court,
+    CourtBooking,
+    CourtDateOverride,
+    CourtSchedule,
+    Invitation,
+    Match,
+    Player,
+    Registration,
+    RegistrationRequest,
+    SchedulePause,
+    Team,
+    TemporaryPassword,
+    Tournament,
+    TournamentPlayer,
+    Zone,
+    ZoneTeam,
+)
 from core.notifications import notify_new_signup_request, notify_tournament_team_signup
 from core.services import draws
 from core.services import matches as matches_service
 from core.services import players as players_service
+from core.services import schedule as schedule_service
 from core.services.tournament_workflow import register_match_result
 
 PLAYOFF_STAGES = draws.PLAYOFF_STAGES
@@ -103,9 +124,22 @@ def _panel_context(request, tournament: Tournament, section: str, **extra) -> di
 
 
 def home(request):
-    if request.user.is_authenticated:
-        return redirect("tournament_select")
-    return redirect("account_login")
+    """Portada pública: sacar turno, torneos y acceso al panel."""
+    complexes = Complex.objects.filter(is_active=True).order_by("name")
+    tournaments = (
+        Tournament.objects.filter(status__in=["open", "running"])
+        .select_related("complex")
+        .order_by("-start_date", "name")[:3]
+    )
+    return render(
+        request,
+        "home.html",
+        {
+            "public_section": "inicio",
+            "complexes": complexes,
+            "tournaments": tournaments,
+        },
+    )
 
 
 @login_required
@@ -1731,7 +1765,7 @@ def public_tournaments(request):
         .select_related("complex")
         .order_by("-start_date", "name")
     )
-    return render(request, "tournaments_list.html", {"tournaments": tournaments})
+    return render(request, "tournaments_list.html", {"tournaments": tournaments, "public_section": "torneos"})
 
 
 def public_tournament_detail(request, slug):
@@ -1906,3 +1940,416 @@ def public_tournament_signup(request, slug):
         "tournament_signup.html",
         {"tournament": tournament, "entered": entered, "genders": Player.GENDER},
     )
+
+
+# ---------------------------------------------------------------------------
+# Turnos de cancha (público)
+# ---------------------------------------------------------------------------
+
+TURNOS_DIAS = 14
+
+
+def _parse_date(raw, default=None):
+    if raw:
+        try:
+            return date_cls.fromisoformat(raw)
+        except (TypeError, ValueError):
+            pass
+    return default
+
+
+def _parse_time(raw):
+    if raw:
+        try:
+            return time_cls.fromisoformat(raw)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def _selected_public_complex(request):
+    complexes = list(Complex.objects.filter(is_active=True).order_by("name"))
+    slug = request.GET.get("complejo") or ""
+    selected = next((item for item in complexes if item.slug == slug), None)
+    if selected is None and complexes:
+        selected = complexes[0]
+    return complexes, selected
+
+
+def turnos(request):
+    """Grilla pública de turnos con reserva sin registro."""
+    today = timezone.localdate()
+    complexes, selected = _selected_public_complex(request)
+
+    day = _parse_date(request.GET.get("fecha"), today)
+    last_day = today + timedelta(days=TURNOS_DIAS - 1)
+    if day < today:
+        day = today
+    if day > last_day:
+        day = last_day
+    days = [today + timedelta(days=index) for index in range(TURNOS_DIAS)]
+
+    board = schedule_service.board_for_day(selected, day) if selected else None
+
+    selected_slot = None
+    if board:
+        court_id = request.GET.get("cancha")
+        start = _parse_time(request.GET.get("hora"))
+        if court_id and start:
+            court = next((item for item in board["courts"] if str(item.pk) == str(court_id)), None)
+            bounds = schedule_service.slot_for(selected, day, start)
+            taken = court is not None and any(
+                booking.court_id == court.pk and booking.start_time == start for booking in board["bookings"]
+            )
+            if court and bounds and not taken and not schedule_service.is_slot_past(day, start):
+                selected_slot = {"court": court, "start": bounds[0], "end": bounds[1]}
+
+    return render(
+        request,
+        "turnos.html",
+        {
+            "public_section": "turnos",
+            "complexes": complexes,
+            "selected_complex": selected,
+            "day": day,
+            "today": today,
+            "days": days,
+            "board": board,
+            "selected_slot": selected_slot,
+        },
+    )
+
+
+@require_POST
+def turno_reservar(request):
+    """Reserva pública: valida la grilla del día y crea el turno."""
+    complex_obj = get_object_or_404(Complex, slug=(request.POST.get("complejo") or ""), is_active=True)
+    day = _parse_date(request.POST.get("fecha"))
+    court = Court.objects.filter(
+        pk=request.POST.get("cancha") or 0, complex=complex_obj, is_active=True
+    ).first()
+    start = _parse_time(request.POST.get("hora"))
+    name = (request.POST.get("nombre") or "").strip()
+    phone = (request.POST.get("telefono") or "").strip()
+    note = (request.POST.get("nota") or "").strip()
+
+    back = f"{reverse('turnos')}?complejo={complex_obj.slug}"
+    if day is not None:
+        back += f"&fecha={day.isoformat()}"
+
+    today = timezone.localdate()
+    if day is None or court is None or start is None:
+        messages.error(request, "No pudimos leer los datos del turno. Probá de nuevo.")
+        return redirect(back)
+    if day < today or day > today + timedelta(days=TURNOS_DIAS - 1):
+        messages.error(request, "Elegí una fecha dentro de los próximos días.")
+        return redirect(back)
+    if not name:
+        messages.error(request, "Completá tu nombre y apellido.")
+        return redirect(back)
+    if len(phone) < 6:
+        messages.error(request, "Completá un WhatsApp de contacto.")
+        return redirect(back)
+    bounds = schedule_service.slot_for(complex_obj, day, start)
+    if bounds is None:
+        messages.error(request, "Ese horario ya no está disponible.")
+        return redirect(back)
+    if schedule_service.is_slot_past(day, start):
+        messages.error(request, "Ese turno ya pasó. Elegí otro horario.")
+        return redirect(back)
+
+    try:
+        with transaction.atomic():
+            booking = CourtBooking.objects.create(
+                complex=complex_obj,
+                court=court,
+                date=day,
+                start_time=bounds[0],
+                end_time=bounds[1],
+                status="booked",
+                customer_name=name[:80],
+                customer_phone=phone[:40],
+                note=note[:140],
+                source="public",
+            )
+    except IntegrityError:
+        messages.error(request, "Ese horario acaba de ser reservado por otra persona. Elegí otro.")
+        return redirect(back)
+
+    messages.success(request, "¡Turno confirmado! Te esperamos.")
+    return redirect("turno_confirmado", code=booking.code)
+
+
+def turno_confirmado(request, code):
+    booking = get_object_or_404(CourtBooking.objects.select_related("complex", "court"), code=code.upper())
+    return render(
+        request,
+        "turno_confirmado.html",
+        {
+            "public_section": "turnos",
+            "booking": booking,
+            "can_cancel": booking.status == "booked"
+            and not schedule_service.is_slot_past(booking.date, booking.start_time),
+        },
+    )
+
+
+def turno_cancelar(request, code):
+    booking = get_object_or_404(CourtBooking.objects.select_related("complex", "court"), code=code.upper())
+    can_cancel = booking.status == "booked" and not schedule_service.is_slot_past(
+        booking.date, booking.start_time
+    )
+    if request.method == "POST":
+        if booking.status != "booked":
+            messages.info(request, "Ese turno ya no está activo.")
+        elif not can_cancel:
+            messages.error(request, "El turno ya pasó y no se puede cancelar.")
+        else:
+            booking.status = "cancelled"
+            booking.cancelled_at = timezone.now()
+            booking.save(update_fields=["status", "cancelled_at"])
+            messages.success(request, "Turno cancelado. El horario vuelve a estar libre.")
+        return redirect("turno_confirmado", code=booking.code)
+    return render(
+        request,
+        "turno_cancelar.html",
+        {"public_section": "turnos", "booking": booking, "can_cancel": can_cancel},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Turnos de cancha (panel)
+# ---------------------------------------------------------------------------
+
+
+def _turnos_complex(request):
+    complexes = list(_manageable_complexes(request.user).filter(is_active=True).order_by("name"))
+    slug = request.GET.get("complejo") or request.POST.get("complejo") or ""
+    selected = next((item for item in complexes if item.slug == slug), None)
+    if selected is None and complexes:
+        selected = complexes[0]
+    return complexes, selected
+
+
+@login_required
+def panel_turnos(request):
+    """Agenda del día: ocupación, carga manual, bloqueos y cancelaciones."""
+    complexes, selected = _turnos_complex(request)
+    today = timezone.localdate()
+    day = _parse_date(request.GET.get("fecha"), today)
+    board = schedule_service.board_for_day(selected, day) if selected else None
+    bookings = (
+        schedule_service.bookings_for_day(selected, day, include_cancelled=True) if selected else []
+    )
+    return render(
+        request,
+        "panel/turnos.html",
+        {
+            "complexes": complexes,
+            "selected_complex": selected,
+            "day": day,
+            "today": today,
+            "prev_day": day - timedelta(days=1),
+            "next_day": day + timedelta(days=1),
+            "board": board,
+            "bookings": bookings,
+        },
+    )
+
+
+@login_required
+def panel_turnos_horarios(request):
+    """Configuración de horarios por tipo de día, pausas y fechas especiales."""
+    complexes, selected = _turnos_complex(request)
+    rows = []
+    overrides = []
+    if selected:
+        schedules = {schedule.day_type: schedule for schedule in selected.court_schedules.all()}
+        for key, label in CourtSchedule.DAY_TYPE:
+            schedule = schedules.get(key)
+            rows.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "schedule": schedule,
+                    "is_open": schedule.is_open if schedule else True,
+                    "start_time": schedule.start_time if schedule else schedule_service.DEFAULT_START,
+                    "end_time": schedule.end_time if schedule else schedule_service.DEFAULT_END,
+                    "slot_minutes": schedule.slot_minutes if schedule else schedule_service.DEFAULT_SLOT_MINUTES,
+                    "pauses": list(schedule.pauses.all()) if schedule else [],
+                }
+            )
+        overrides = list(
+            selected.court_overrides.filter(date__gte=timezone.localdate() - timedelta(days=1))
+            .order_by("date")[:90]
+        )
+    return render(
+        request,
+        "panel/turnos_horarios.html",
+        {
+            "complexes": complexes,
+            "selected_complex": selected,
+            "day_type_rows": rows,
+            "overrides": overrides,
+        },
+    )
+
+
+@login_required
+@require_POST
+def panel_turno_accion(request):
+    complex_obj = get_object_or_404(Complex, slug=(request.POST.get("complejo") or ""))
+    access.require_complex_access(request.user, complex_obj)
+    action = request.POST.get("accion")
+    day = _parse_date(request.POST.get("fecha"))
+    back = f"{reverse('panel_turnos')}?complejo={complex_obj.slug}"
+    if day is not None:
+        back += f"&fecha={day.isoformat()}"
+
+    if action == "cancelar":
+        booking = get_object_or_404(CourtBooking, pk=request.POST.get("turno_id") or 0, complex=complex_obj)
+        if booking.status in ("booked", "blocked"):
+            booking.status = "cancelled"
+            booking.cancelled_at = timezone.now()
+            booking.save(update_fields=["status", "cancelled_at"])
+            messages.success(request, "Turno cancelado; el horario quedó libre.")
+        else:
+            messages.info(request, "Ese turno ya estaba cancelado.")
+        return redirect(back)
+
+    if action not in ("reservar", "bloquear"):
+        messages.error(request, "Acción desconocida.")
+        return redirect(back)
+    if day is None:
+        messages.error(request, "Elegí una fecha válida.")
+        return redirect(back)
+
+    court = Court.objects.filter(
+        pk=request.POST.get("cancha") or 0, complex=complex_obj, is_active=True
+    ).first()
+    start = _parse_time(request.POST.get("hora"))
+    if court is None or start is None:
+        messages.error(request, "Elegí la cancha y el horario.")
+        return redirect(back)
+    bounds = schedule_service.slot_for(complex_obj, day, start)
+    if bounds is None:
+        messages.error(request, "Ese horario no existe en la grilla del día.")
+        return redirect(back)
+
+    name = (request.POST.get("nombre") or "").strip()
+    phone = (request.POST.get("telefono") or "").strip()
+    note = (request.POST.get("nota") or "").strip()
+    if action == "reservar" and not name:
+        messages.error(request, "Para reservar cargá el nombre del cliente.")
+        return redirect(back)
+
+    try:
+        with transaction.atomic():
+            CourtBooking.objects.create(
+                complex=complex_obj,
+                court=court,
+                date=day,
+                start_time=bounds[0],
+                end_time=bounds[1],
+                status="booked" if action == "reservar" else "blocked",
+                customer_name=name[:80] if action == "reservar" else "",
+                customer_phone=phone[:40] if action == "reservar" else "",
+                note=note[:140],
+                source="panel",
+                created_by=request.user,
+            )
+    except IntegrityError:
+        messages.error(request, "Ese horario ya está ocupado.")
+        return redirect(back)
+
+    messages.success(request, "Turno reservado." if action == "reservar" else "Horario bloqueado.")
+    return redirect(back)
+
+
+@login_required
+@require_POST
+def panel_horarios_accion(request):
+    complex_obj = get_object_or_404(Complex, slug=(request.POST.get("complejo") or ""))
+    access.require_complex_access(request.user, complex_obj)
+    action = request.POST.get("accion")
+    back = f"{reverse('panel_turnos_horarios')}?complejo={complex_obj.slug}"
+
+    if action == "guardar_horario":
+        day_type = request.POST.get("tipo_dia")
+        if day_type not in dict(CourtSchedule.DAY_TYPE):
+            messages.error(request, "Tipo de día inválido.")
+            return redirect(back)
+        schedule, _ = CourtSchedule.objects.get_or_create(complex=complex_obj, day_type=day_type)
+        schedule.is_open = request.POST.get("abierto") == "on"
+        schedule.start_time = _parse_time(request.POST.get("desde")) or schedule.start_time
+        schedule.end_time = _parse_time(request.POST.get("hasta")) or schedule.end_time
+        duration = request.POST.get("duracion")
+        if duration:
+            try:
+                schedule.slot_minutes = int(duration)
+            except ValueError:
+                pass
+        try:
+            schedule.full_clean()
+        except ValidationError as exc:
+            messages.error(request, _error_text(exc))
+            return redirect(back)
+        schedule.save()
+        messages.success(request, f"Horario guardado: {schedule.get_day_type_display()}.")
+
+    elif action == "agregar_pausa":
+        schedule = get_object_or_404(
+            CourtSchedule, pk=request.POST.get("horario_id") or 0, complex=complex_obj
+        )
+        pause = SchedulePause(
+            schedule=schedule,
+            start_time=_parse_time(request.POST.get("desde")),
+            end_time=_parse_time(request.POST.get("hasta")),
+        )
+        if pause.start_time is None or pause.end_time is None:
+            messages.error(request, "Completá la hora de inicio y de fin de la pausa.")
+        else:
+            try:
+                pause.full_clean()
+            except ValidationError as exc:
+                messages.error(request, _error_text(exc))
+            else:
+                pause.save()
+                messages.success(request, "Pausa agregada.")
+
+    elif action == "quitar_pausa":
+        pause = get_object_or_404(
+            SchedulePause, pk=request.POST.get("pausa_id") or 0, schedule__complex=complex_obj
+        )
+        pause.delete()
+        messages.success(request, "Pausa eliminada.")
+
+    elif action == "guardar_fecha":
+        day = _parse_date(request.POST.get("fecha"))
+        if day is None:
+            messages.error(request, "Elegí una fecha válida.")
+            return redirect(back)
+        override, _ = CourtDateOverride.objects.get_or_create(complex=complex_obj, date=day)
+        override.is_closed = request.POST.get("cerrado") == "on"
+        override.start_time = _parse_time(request.POST.get("desde"))
+        override.end_time = _parse_time(request.POST.get("hasta"))
+        override.note = (request.POST.get("nota") or "").strip()[:120]
+        try:
+            override.full_clean()
+        except ValidationError as exc:
+            messages.error(request, _error_text(exc))
+            return redirect(back)
+        override.save()
+        messages.success(request, "Fecha especial guardada.")
+
+    elif action == "quitar_fecha":
+        override = get_object_or_404(
+            CourtDateOverride, pk=request.POST.get("fecha_id") or 0, complex=complex_obj
+        )
+        override.delete()
+        messages.success(request, "Fecha especial eliminada.")
+
+    else:
+        messages.error(request, "Acción desconocida.")
+
+    return redirect(back)

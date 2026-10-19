@@ -1,41 +1,27 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Torneos · Pádel Server</title>
-  <link rel="stylesheet" href="{% static 'core/padel.css' %}">
-</head>
-<body class="padel-page">
-  <main class="padel-shell">
-    <header class="padel-topbar">
-      <div class="padel-brand"><span class="padel-badge">PA</span><span>Pádel Server</span></div>
-      <div class="padel-actions">
-        <a class="btn btn--secondary" href="{% url 'home' %}">Panel de gestión</a>
-      </div>
-    </header>
-    <section class="panel-section">
-      <h1>Torneos</h1>
-      <p class="muted">Consultá el fixture con todos los resultados, desde la fase de grupos hasta la final.</p>
-    </section>
-    {% if tournaments %}
-      <div class="padel-grid">
-        {% for t in tournaments %}
-          <article class="padel-card">
-            <h2>{{ t.name }}</h2>
-            <p class="muted">{% if t.complex %}{{ t.complex.name }} · {% endif %}{{ t.get_category_display }}</p>
-            <p>
-              <span class="status-pill {% if t.status == 'finished' %}status-pill--done{% elif t.status == 'running' %}status-pill--running{% else %}status-pill--pending{% endif %}">{{ t.get_status_display }}</span>
-              <span class="muted">{{ t.start_date }}</span>
-            </p>
-            <a class="btn btn--primary" href="{% url 'public_tournament_detail' t.slug %}">Ver fixture</a>
-          </article>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p class="alert alert--info">No hay torneos publicados.</p>
-    {% endif %}
-  </main>
-</body>
-</html>
+{% extends "base_public.html" %}
+
+{% block title %}Torneos · Pádel Server{% endblock %}
+
+{% block content %}
+<section class="panel-section">
+  <h1>Torneos</h1>
+  <p class="muted">Consultá el fixture con todos los resultados, desde la fase de grupos hasta la final.</p>
+</section>
+{% if tournaments %}
+  <div class="padel-grid">
+    {% for t in tournaments %}
+      <article class="padel-card">
+        <h2>{{ t.name }}</h2>
+        <p class="muted">{% if t.complex %}{{ t.complex.name }} · {% endif %}{{ t.get_category_display }}</p>
+        <p>
+          <span class="status-pill {% if t.status == 'finished' %}status-pill--done{% elif t.status == 'running' %}status-pill--running{% else %}status-pill--pending{% endif %}">{{ t.get_status_display }}</span>
+          <span class="muted">{{ t.start_date }}</span>
+        </p>
+        <a class="btn btn--primary" href="{% url 'public_tournament_detail' t.slug %}">Ver fixture</a>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="alert alert--info">No hay torneos publicados.</p>
+{% endif %}
+{% endblock %}

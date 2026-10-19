@@ -6,6 +6,17 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
 
 ## Funcionalidades
 
+- **Turnos de cancha**: página pública **/turnos/** para reservar sin registrarse (nombre y
+  WhatsApp), con grilla de horarios libres por cancha y día (próximos 14 días), código de
+  confirmación y cancelación online. En el panel, **Turnos** muestra la agenda del día, permite
+  cargar reservas manuales, bloquear horarios (mantenimiento) y liberar/cancelar; **Turnos →
+  Horarios y feriados** configura por complejo el primer turno, el cierre y la duración (1,5 h
+  por defecto) para días hábiles, sábados y domingos, con **pausas** que cortan la secuencia
+  (al terminar la pausa los turnos continúan con la misma duración) y **fechas especiales**
+  (feriados) con cierre total o horario propio.
+- **Portada pública** (**/**): landing con accesos grandes a «Sacar un turno» y «Ver torneos»;
+  los usuarios logueados ven además el botón al panel de gestión. El ingreso del personal queda
+  en «Ingresar».
 - **Multi-complejo**: cada complejo tiene sus torneos, canchas y usuarios autorizados.
   Cada usuario del panel puede crear y editar su propio complejo desde Configuración general;
   el único dato compartido entre complejos es la base de jugadores.
@@ -104,6 +115,12 @@ docker compose exec app python manage.py createsuperuser
 # http://localhost (caddy) o http://localhost:8000 (app directa)
 ```
 
+Para desarrollo con recarga automática (monta el código en el contenedor):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d app
+```
+
 ## Tests
 
 ```bash
@@ -113,7 +130,8 @@ docker compose run --rm -v "$PWD/app:/app" app python manage.py test core
 Cubren validación de resultados, disponibilidad de jugadores, zonas, partidos, desempates
 auditables, tamaños de llave 2..32 (incluye 5, 6, 7, 9, 10, 11, 17 y 24 con descansos,
 octavos de 16 y dieciseisavos de 32), progresión automática hasta la final, panel de
-resultados con cruces en espera, correcciones y aislamiento por complejo.
+resultados con cruces en espera, correcciones, aislamiento por complejo y turnos de cancha
+(grilla con duración configurable, pausas y feriados, reserva pública y gestión del panel).
 
 ## Producción (LXC)
 

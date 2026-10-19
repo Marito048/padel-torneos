@@ -1,0 +1,10 @@
+# Archivo SOLO para desarrollo local (no está incluido por defecto).
+# Uso: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d app
+# Monta el código y ejecuta el servidor de desarrollo con recarga automática.
+services:
+  app:
+    volumes:
+      - ./app:/app
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py runserver 0.0.0.0:8000"

@@ -1,0 +1,123 @@
+{% extends "base_public.html" %}
+
+{% block title %}Turnos · Pádel Server{% endblock %}
+
+{% block content %}
+<section class="panel-section">
+  <h1>Turnos</h1>
+  {% if board %}
+    <p class="muted">
+      Elegí una cancha y un horario libre. Los turnos duran {{ board.config.slot_minutes }} minutos.
+    </p>
+  {% else %}
+    <p class="muted">Elegí el complejo y el día para ver los horarios libres.</p>
+  {% endif %}
+</section>
+
+{% if not complexes %}
+  <p class="alert alert--info">Todavía no hay complejos disponibles para reservar turnos.</p>
+{% else %}
+  <form method="get" action="{% url 'turnos' %}" class="turnos-filter">
+    <label>Complejo
+      <select name="complejo" onchange="this.form.submit()">
+        {% for complex in complexes %}
+          <option value="{{ complex.slug }}"{% if selected_complex and complex.pk == selected_complex.pk %} selected{% endif %}>{{ complex.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Día
+      <input type="date" name="fecha" value="{{ day|date:'Y-m-d' }}" min="{{ today|date:'Y-m-d' }}" onchange="this.form.submit()">
+    </label>
+    <noscript><button class="btn btn--primary btn--sm" type="submit">Ver turnos</button></noscript>
+  </form>
+
+  <nav class="day-tabs" aria-label="Elegir día">
+    {% for d in days %}
+      <a class="day-tab{% if d == day %} active{% endif %}" href="{% url 'turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ d|date:'Y-m-d' }}">
+        <span>{{ d|date:"D" }}</span>
+        <strong>{{ d|date:"d/m" }}</strong>
+      </a>
+    {% endfor %}
+  </nav>
+
+  {% if board %}
+    {% if not board.config.is_open %}
+      <p class="alert alert--info">Ese día el complejo está cerrado{% if board.config.override.note %} ({{ board.config.override.note }}){% endif %}. Probá con otra fecha.</p>
+    {% elif not board.courts %}
+      <p class="alert alert--info">El complejo todavía no tiene canchas disponibles.</p>
+    {% elif not board.rows %}
+      <p class="alert alert--info">No hay turnos configurados para ese día. Probá con otra fecha.</p>
+    {% else %}
+      <div class="turnos-board">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Hora</th>
+              {% for court in board.courts %}<th scope="col">{{ court.name }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in board.rows %}
+              <tr>
+                <th scope="row">{{ row.start|time:"H:i" }} a {{ row.end|time:"H:i" }}</th>
+                {% for cell in row.cells %}
+                  <td>
+                    {% if cell.booking %}
+                      {% if cell.booking.status == "blocked" %}
+                        <span class="slot slot--blocked">Bloqueado</span>
+                      {% else %}
+                        <span class="slot slot--busy">Ocupado</span>
+                      {% endif %}
+                    {% elif cell.past %}
+                      <span class="slot slot--past">—</span>
+                    {% elif selected_slot and selected_slot.court.pk == cell.court.pk and selected_slot.start == row.start %}
+                      <span class="slot slot--chosen">Elegido</span>
+                    {% else %}
+                      <a class="slot slot--free" href="{% url 'turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}&cancha={{ cell.court.pk }}&hora={{ row.start|time:'H:i' }}#reservar">Libre</a>
+                    {% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="turnos-legend">
+        <span><span class="slot slot--free">Libre</span> se puede reservar</span>
+        <span><span class="slot slot--busy">Ocupado</span> ya reservado</span>
+        <span><span class="slot slot--blocked">Bloqueado</span> no disponible</span>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  {% if selected_slot %}
+    <section class="padel-card" id="reservar">
+      <h2>Confirmá tu turno</h2>
+      <p class="muted">
+        {{ selected_complex.name }} · {{ day|date:"l d/m/Y" }} ·
+        {{ selected_slot.start|time:"H:i" }} a {{ selected_slot.end|time:"H:i" }} · {{ selected_slot.court.name }}
+      </p>
+      <form method="post" action="{% url 'turno_reservar' %}" class="form-grid">
+        {% csrf_token %}
+        <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+        <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+        <input type="hidden" name="cancha" value="{{ selected_slot.court.pk }}">
+        <input type="hidden" name="hora" value="{{ selected_slot.start|time:'H:i' }}">
+        <label>Nombre y apellido
+          <input type="text" name="nombre" maxlength="80" required autocomplete="name" placeholder="Ej: Ana Pérez">
+        </label>
+        <label>WhatsApp
+          <input type="tel" name="telefono" maxlength="40" required autocomplete="tel" placeholder="Ej: 2215551234">
+        </label>
+        <label>Comentario (opcional)
+          <input type="text" name="nota" maxlength="140" placeholder="Ej: necesito palas">
+        </label>
+        <div class="form-actions">
+          <button class="btn btn--primary" type="submit">Confirmar turno</button>
+          <a class="btn btn--secondary" href="{% url 'turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}">Elegir otro horario</a>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+{% endif %}
+{% endblock %}

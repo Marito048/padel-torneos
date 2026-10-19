@@ -1,0 +1,31 @@
+{% extends "base_public.html" %}
+
+{% block title %}Cancelar turno · Pádel Server{% endblock %}
+
+{% block content %}
+<section class="panel-section">
+  <h1>Cancelar turno</h1>
+  <p class="muted">Estás por cancelar este turno:</p>
+</section>
+
+<article class="padel-card">
+  <h2>{{ booking.complex.name }} · {{ booking.court.name }}</h2>
+  <p class="muted">{{ booking.date|date:"l d/m/Y" }} de {{ booking.start_time|time:"H:i" }} a {{ booking.end_time|time:"H:i" }}</p>
+  <p class="muted">A nombre de: <strong>{{ booking.customer_name|default:"—" }}</strong> · Código {{ booking.code }}</p>
+
+  {% if can_cancel %}
+    <p>El horario va a quedar libre para otra persona.</p>
+    <form method="post" action="{% url 'turno_cancelar' booking.code %}" class="form-actions">
+      {% csrf_token %}
+      <button class="btn btn--danger" type="submit">Sí, cancelar el turno</button>
+      <a class="btn btn--secondary" href="{% url 'turno_confirmado' booking.code %}">No, volver</a>
+    </form>
+  {% elif booking.status == "cancelled" %}
+    <p class="alert alert--info">Este turno ya fue cancelado.</p>
+    <a class="btn btn--primary" href="{% url 'turnos' %}?complejo={{ booking.complex.slug }}">Sacar otro turno</a>
+  {% else %}
+    <p class="alert alert--warning">Este turno ya pasó y no se puede cancelar.</p>
+    <a class="btn btn--primary" href="{% url 'turnos' %}?complejo={{ booking.complex.slug }}">Sacar otro turno</a>
+  {% endif %}
+</article>
+{% endblock %}

@@ -1,4 +1,6 @@
 import re
+import secrets
+from datetime import time as dt_time
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -238,6 +240,187 @@ class Court(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class CourtSchedule(models.Model):
+    """Horario de turnos del complejo según el tipo de día.
+
+    Define desde qué hora arrancan los turnos, hasta qué hora cierra el
+    complejo y cuánto dura cada turno (1,5 h por defecto).
+    """
+
+    DAY_TYPE = [
+        ("weekday", "Día hábil (lunes a viernes)"),
+        ("saturday", "Sábado"),
+        ("sunday", "Domingo"),
+    ]
+
+    complex = models.ForeignKey(
+        Complex,
+        on_delete=models.CASCADE,
+        related_name="court_schedules",
+        verbose_name="Complejo",
+    )
+    day_type = models.CharField("Tipo de día", max_length=10, choices=DAY_TYPE)
+    is_open = models.BooleanField("Abierto", default=True)
+    start_time = models.TimeField("Primer turno", default=dt_time(9, 0))
+    end_time = models.TimeField("Cierre", default=dt_time(23, 0))
+    slot_minutes = models.PositiveSmallIntegerField("Duración del turno (minutos)", default=90)
+
+    class Meta:
+        ordering = ["complex", "day_type"]
+        verbose_name = "Horario de turnos"
+        verbose_name_plural = "Horarios de turnos"
+        constraints = [
+            models.UniqueConstraint(fields=["complex", "day_type"], name="unique_court_schedule_day_type"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.complex} · {self.get_day_type_display()}"
+
+    def clean(self):
+        if self.end_time <= self.start_time:
+            raise ValidationError({"end_time": "El cierre debe ser posterior al primer turno."})
+        if self.slot_minutes < 30 or self.slot_minutes > 240:
+            raise ValidationError({"slot_minutes": "La duración del turno debe estar entre 30 y 240 minutos."})
+
+
+class SchedulePause(models.Model):
+    """Pausa dentro del horario (mantenimiento, clases, torneo, etc.).
+
+    Al terminar la pausa los turnos continúan con la misma duración.
+    """
+
+    schedule = models.ForeignKey(
+        CourtSchedule,
+        on_delete=models.CASCADE,
+        related_name="pauses",
+        verbose_name="Horario",
+    )
+    start_time = models.TimeField("Desde")
+    end_time = models.TimeField("Hasta")
+
+    class Meta:
+        ordering = ["start_time"]
+        verbose_name = "Pausa"
+        verbose_name_plural = "Pausas"
+
+    def __str__(self) -> str:
+        return f"{self.start_time:%H:%M} a {self.end_time:%H:%M}"
+
+    def clean(self):
+        if self.end_time <= self.start_time:
+            raise ValidationError({"end_time": "La pausa debe terminar después de empezar."})
+
+
+class CourtDateOverride(models.Model):
+    """Excepción para una fecha puntual: feriado, cierre o horario especial."""
+
+    complex = models.ForeignKey(
+        Complex,
+        on_delete=models.CASCADE,
+        related_name="court_overrides",
+        verbose_name="Complejo",
+    )
+    date = models.DateField("Fecha")
+    is_closed = models.BooleanField("Cerrado", default=True)
+    start_time = models.TimeField("Desde", null=True, blank=True)
+    end_time = models.TimeField("Hasta", null=True, blank=True)
+    note = models.CharField("Nota", max_length=120, blank=True)
+
+    class Meta:
+        ordering = ["date"]
+        verbose_name = "Fecha especial"
+        verbose_name_plural = "Fechas especiales"
+        constraints = [
+            models.UniqueConstraint(fields=["complex", "date"], name="unique_court_override_date"),
+        ]
+
+    def __str__(self) -> str:
+        state = "cerrado" if self.is_closed else "horario especial"
+        return f"{self.date:%d/%m/%Y} ({state})"
+
+    def clean(self):
+        if not self.is_closed:
+            if self.start_time and self.end_time and self.end_time <= self.start_time:
+                raise ValidationError({"end_time": "El cierre debe ser posterior a la apertura."})
+
+
+class CourtBooking(models.Model):
+    """Turno de una cancha, tomado por el público o cargado desde el panel.
+
+    - ``booked``: turno reservado (con o sin datos de cliente).
+    - ``blocked``: horario bloqueado a mano (mantenimiento, torneo, etc.).
+    - ``cancelled``: libera el horario y queda como historial.
+    """
+
+    STATUS = [
+        ("booked", "Reservado"),
+        ("blocked", "Bloqueado"),
+        ("cancelled", "Cancelado"),
+    ]
+    SOURCE = [
+        ("public", "Público"),
+        ("panel", "Panel"),
+    ]
+
+    complex = models.ForeignKey(
+        Complex,
+        on_delete=models.CASCADE,
+        related_name="court_bookings",
+        verbose_name="Complejo",
+    )
+    court = models.ForeignKey(
+        Court,
+        on_delete=models.CASCADE,
+        related_name="bookings",
+        verbose_name="Cancha",
+    )
+    date = models.DateField("Fecha")
+    start_time = models.TimeField("Desde")
+    end_time = models.TimeField("Hasta")
+    status = models.CharField("Estado", max_length=10, choices=STATUS, default="booked")
+    customer_name = models.CharField("Cliente", max_length=80, blank=True)
+    customer_phone = models.CharField("Teléfono", max_length=40, blank=True)
+    note = models.CharField("Nota", max_length=140, blank=True)
+    code = models.CharField("Código", max_length=12, unique=True, blank=True)
+    source = models.CharField("Origen", max_length=10, choices=SOURCE, default="public")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_court_bookings",
+        verbose_name="Cargado por",
+    )
+    created_at = models.DateTimeField("Creado", auto_now_add=True)
+    cancelled_at = models.DateTimeField("Cancelado", null=True, blank=True)
+
+    class Meta:
+        ordering = ["date", "start_time"]
+        verbose_name = "Turno"
+        verbose_name_plural = "Turnos"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["court", "date", "start_time"],
+                condition=Q(status__in=["booked", "blocked"]),
+                name="unique_active_booking_slot",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.court} · {self.date:%d/%m/%Y} {self.start_time:%H:%M}"
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self.generate_code()
+        super().save(*args, **kwargs)
+
+    @staticmethod
+    def generate_code() -> str:
+        """Código corto para consultar o cancelar el turno (sin caracteres confusos)."""
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        return "".join(secrets.choice(alphabet) for _ in range(8))
 
 
 class Player(models.Model):

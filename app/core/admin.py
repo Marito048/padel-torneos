@@ -1,6 +1,25 @@
 from django.contrib import admin
 
-from .models import Complex, Court, Invitation, Match, Player, Registration, RegistrationRequest, Team, TemporaryPassword, TieBreakAudit, Tournament, TournamentPlayer, Zone, ZoneTeam
+from .models import (
+    Complex,
+    Court,
+    CourtBooking,
+    CourtDateOverride,
+    CourtSchedule,
+    Invitation,
+    Match,
+    Player,
+    Registration,
+    RegistrationRequest,
+    SchedulePause,
+    Team,
+    TemporaryPassword,
+    TieBreakAudit,
+    Tournament,
+    TournamentPlayer,
+    Zone,
+    ZoneTeam,
+)
 
 
 class ComplexScopedAdminMixin:
@@ -64,6 +83,44 @@ class CourtAdmin(ComplexScopedAdminMixin, admin.ModelAdmin):
     list_display = ("name", "complex", "surface", "is_active")
     list_filter = ("surface", "is_active", "complex")
     search_fields = ("name",)
+
+
+class SchedulePauseInline(admin.TabularInline):
+    model = SchedulePause
+    extra = 0
+
+
+@admin.register(CourtSchedule)
+class CourtScheduleAdmin(ComplexScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("complex", "day_type", "is_open", "start_time", "end_time", "slot_minutes")
+    list_filter = ("day_type", "is_open", "complex")
+    inlines = [SchedulePauseInline]
+
+
+@admin.register(CourtDateOverride)
+class CourtDateOverrideAdmin(ComplexScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("complex", "date", "is_closed", "start_time", "end_time", "note")
+    list_filter = ("is_closed", "complex")
+    ordering = ("-date",)
+
+
+@admin.register(CourtBooking)
+class CourtBookingAdmin(ComplexScopedAdminMixin, admin.ModelAdmin):
+    list_display = (
+        "date",
+        "start_time",
+        "end_time",
+        "court",
+        "complex",
+        "status",
+        "customer_name",
+        "customer_phone",
+        "source",
+    )
+    list_filter = ("status", "source", "complex", "court", "date")
+    search_fields = ("customer_name", "customer_phone", "code")
+    readonly_fields = ("code", "created_at", "cancelled_at")
+    date_hierarchy = "date"
 
 
 @admin.register(Invitation)

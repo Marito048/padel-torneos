@@ -1,0 +1,33 @@
+{% extends "base_public.html" %}
+
+{% block title %}Turno {{ booking.code }} · Pádel Server{% endblock %}
+
+{% block content %}
+<section class="panel-section">
+  <h1>Tu turno</h1>
+</section>
+
+<article class="padel-card">
+  {% if booking.status == "booked" %}
+    <p><span class="status-pill status-pill--done">Reservado</span></p>
+  {% elif booking.status == "blocked" %}
+    <p><span class="status-pill status-pill--pending">Bloqueado</span></p>
+  {% else %}
+    <p><span class="status-pill status-pill--pending">Cancelado</span></p>
+  {% endif %}
+
+  <h2>{{ booking.complex.name }} · {{ booking.court.name }}</h2>
+  <p class="muted">{{ booking.date|date:"l d/m/Y" }} de {{ booking.start_time|time:"H:i" }} a {{ booking.end_time|time:"H:i" }}</p>
+  <p class="muted">A nombre de: <strong>{{ booking.customer_name|default:"—" }}</strong></p>
+
+  <p class="registration-code">{{ booking.code }}</p>
+  <p class="help">Guardá este código: con él podés consultar o cancelar el turno desde este mismo enlace.</p>
+
+  <div class="padel-actions">
+    <a class="btn btn--primary" href="{% url 'turnos' %}?complejo={{ booking.complex.slug }}&fecha={{ booking.date|date:'Y-m-d' }}">Sacar otro turno</a>
+    {% if can_cancel %}
+      <a class="btn btn--danger" href="{% url 'turno_cancelar' booking.code %}">Cancelar este turno</a>
+    {% endif %}
+  </div>
+</article>
+{% endblock %}

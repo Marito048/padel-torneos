@@ -1,0 +1,186 @@
+{% extends "panel/base_panel.html" %}
+
+{% block title %}Turnos{% endblock %}
+
+{% block content %}
+<section class="panel-section">
+  <h1>Turnos</h1>
+  <p class="muted">Agenda del día: ocupación por cancha, carga manual, bloqueos y cancelaciones.</p>
+  <div class="padel-actions">
+    <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_horarios' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Horarios y feriados</a>
+  </div>
+</section>
+
+{% if not complexes %}
+  <p class="alert alert--info">Tu usuario todavía no tiene complejos asignados. Pedile a la administración que te dé acceso.</p>
+{% else %}
+  <form method="get" action="{% url 'panel_turnos' %}" class="turnos-filter">
+    <label>Complejo
+      <select name="complejo" onchange="this.form.submit()">
+        {% for complex in complexes %}
+          <option value="{{ complex.slug }}"{% if selected_complex and complex.pk == selected_complex.pk %} selected{% endif %}>{{ complex.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Día
+      <input type="date" name="fecha" value="{{ day|date:'Y-m-d' }}" onchange="this.form.submit()">
+    </label>
+    <noscript><button class="btn btn--primary btn--sm" type="submit">Ver</button></noscript>
+  </form>
+
+  <div class="day-nav">
+    <a class="btn btn--secondary btn--xs" href="{% url 'panel_turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ prev_day|date:'Y-m-d' }}">← {{ prev_day|date:"d/m" }}</a>
+    <span class="day-nav__current">{{ day|date:"l d/m/Y" }}</span>
+    <a class="btn btn--secondary btn--xs" href="{% url 'panel_turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ next_day|date:'Y-m-d' }}">{{ next_day|date:"d/m" }} →</a>
+    {% if day != today %}<a class="btn btn--secondary btn--xs" href="{% url 'panel_turnos' %}?complejo={{ selected_complex.slug }}">Hoy</a>{% endif %}
+  </div>
+
+  {% if board and board.config and not board.config.is_open %}
+    <p class="alert alert--info">El complejo está cerrado ese día{% if board.config.override.note %} ({{ board.config.override.note }}){% endif %}.</p>
+  {% elif board and not board.courts %}
+    <p class="alert alert--info">El complejo no tiene canchas activas.</p>
+  {% elif board and board.rows %}
+    <div class="turnos-board">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Hora</th>
+            {% for court in board.courts %}<th scope="col">{{ court.name }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in board.rows %}
+            <tr>
+              <th scope="row">{{ row.start|time:"H:i" }} a {{ row.end|time:"H:i" }}</th>
+              {% for cell in row.cells %}
+                <td class="turnos-cell">
+                  {% if cell.booking %}
+                    {% if cell.booking.status == "blocked" %}
+                      <span class="slot slot--blocked">Bloqueado</span>
+                      {% if cell.booking.note %}<span class="slot-note">{{ cell.booking.note }}</span>{% endif %}
+                    {% else %}
+                      <span class="slot slot--busy">{{ cell.booking.customer_name|default:"Reservado" }}</span>
+                      {% if cell.booking.customer_phone %}<span class="slot-note">{{ cell.booking.customer_phone }}</span>{% endif %}
+                    {% endif %}
+                    <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Liberar este horario?">
+                      {% csrf_token %}
+                      <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                      <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+                      <input type="hidden" name="accion" value="cancelar">
+                      <input type="hidden" name="turno_id" value="{{ cell.booking.pk }}">
+                      <button class="btn btn--xs btn--secondary" type="submit">Liberar</button>
+                    </form>
+                  {% elif cell.past %}
+                    <span class="slot slot--past">—</span>
+                  {% else %}
+                    <a class="slot slot--free" href="{% url 'panel_turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}&cancha={{ cell.court.pk }}&hora={{ row.start|time:'H:i' }}#nuevo">Libre</a>
+                    <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Bloquear este horario?">
+                      {% csrf_token %}
+                      <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                      <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+                      <input type="hidden" name="accion" value="bloquear">
+                      <input type="hidden" name="cancha" value="{{ cell.court.pk }}">
+                      <input type="hidden" name="hora" value="{{ row.start|time:'H:i' }}">
+                      <button class="btn btn--xs btn--secondary" type="submit">Bloquear</button>
+                    </form>
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="turnos-legend">
+      <span><span class="slot slot--free">Libre</span> se puede reservar</span>
+      <span><span class="slot slot--busy">Reservado</span> con cliente</span>
+      <span><span class="slot slot--blocked">Bloqueado</span> sin cliente</span>
+    </div>
+  {% else %}
+    <p class="alert alert--info">No hay turnos configurados para ese día. Revisá «Horarios y feriados».</p>
+  {% endif %}
+
+  {% if board and board.rows %}
+    <section class="padel-card" id="nuevo">
+      <h2>Nuevo turno / bloqueo</h2>
+      <p class="help">Elegí cancha y horario, cargá el cliente y reservá. Con «Bloquear» el horario queda fuera de circulación.</p>
+      <form method="post" action="{% url 'panel_turno_accion' %}" class="form-grid">
+        {% csrf_token %}
+        <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+        <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+        <label>Cancha
+          <select name="cancha" required>
+            {% for court in board.courts %}
+              <option value="{{ court.pk }}"{% if request.GET.cancha == court.pk|stringformat:"s" %} selected{% endif %}>{{ court.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Horario
+          <select name="hora" required>
+            {% for row in board.rows %}
+              <option value="{{ row.start|time:'H:i' }}"{% if request.GET.hora == row.start|time:'H:i' %} selected{% endif %}>{{ row.start|time:"H:i" }} a {{ row.end|time:"H:i" }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Cliente
+          <input type="text" name="nombre" maxlength="80" placeholder="Ej: Ana Pérez">
+        </label>
+        <label>WhatsApp
+          <input type="tel" name="telefono" maxlength="40" placeholder="Ej: 2215551234">
+        </label>
+        <label>Nota
+          <input type="text" name="nota" maxlength="140" placeholder="Ej: paga en efectivo">
+        </label>
+        <div class="form-actions">
+          <button class="btn btn--primary" type="submit" name="accion" value="reservar">Reservar turno</button>
+          <button class="btn btn--secondary" type="submit" name="accion" value="bloquear">Bloquear horario</button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+
+  <section class="panel-section">
+    <h2>Reservas del día</h2>
+  </section>
+  {% if bookings %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Hora</th><th>Cancha</th><th>Estado</th><th>Cliente</th><th>WhatsApp</th><th>Origen</th><th>Nota</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for booking in bookings %}
+          <tr>
+            <td>{{ booking.start_time|time:"H:i" }} a {{ booking.end_time|time:"H:i" }}</td>
+            <td>{{ booking.court.name }}</td>
+            <td>
+              {% if booking.status == "booked" %}<span class="status-pill status-pill--done">Reservado</span>
+              {% elif booking.status == "blocked" %}<span class="status-pill status-pill--pending">Bloqueado</span>
+              {% else %}<span class="status-pill status-pill--pending">Cancelado</span>{% endif %}
+            </td>
+            <td>{{ booking.customer_name|default:"—" }}</td>
+            <td>{{ booking.customer_phone|default:"—" }}</td>
+            <td>{{ booking.get_source_display }}{% if booking.created_by %} ({{ booking.created_by.username }}){% endif %}</td>
+            <td>{{ booking.note|default:"—" }}</td>
+            <td>
+              {% if booking.status != "cancelled" %}
+                <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Cancelar este turno?">
+                  {% csrf_token %}
+                  <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                  <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+                  <input type="hidden" name="accion" value="cancelar">
+                  <input type="hidden" name="turno_id" value="{{ booking.pk }}">
+                  <button class="btn btn--xs btn--danger" type="submit">Cancelar</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="help">Todavía no hay reservas para este día.</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

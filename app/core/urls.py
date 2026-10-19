@@ -42,6 +42,11 @@ urlpatterns = [
         views.general_registration_request_delete,
         name="general_registration_request_delete",
     ),
+    # Turnos de cancha (panel). Antes de gestion/<slug> para no chocar con ese patrón.
+    path("gestion/turnos/", views.panel_turnos, name="panel_turnos"),
+    path("gestion/turnos/horarios/", views.panel_turnos_horarios, name="panel_turnos_horarios"),
+    path("gestion/turnos/accion/", views.panel_turno_accion, name="panel_turno_accion"),
+    path("gestion/turnos/horarios/accion/", views.panel_horarios_accion, name="panel_horarios_accion"),
     path("gestion/<slug:slug>/", views.tournament_manage, name="tournament_manage"),
     path("gestion/<slug:slug>/configuracion/", views.tournament_form, name="tournament_edit"),
     path("gestion/<slug:slug>/eliminar/", views.panel_tournament_delete, name="panel_tournament_delete"),
@@ -92,6 +97,11 @@ urlpatterns = [
     path("torneos/", views.public_tournaments, name="public_tournaments"),
     path("torneos/<slug:slug>/", views.public_tournament_detail, name="public_tournament_detail"),
     path("torneos/<slug:slug>/anotarse/", views.public_tournament_signup, name="public_tournament_signup"),
+    # Turnos de cancha (público, sin registro).
+    path("turnos/", views.turnos, name="turnos"),
+    path("turnos/reservar/", views.turno_reservar, name="turno_reservar"),
+    path("turnos/confirmado/<str:code>/", views.turno_confirmado, name="turno_confirmado"),
+    path("turnos/cancelar/<str:code>/", views.turno_cancelar, name="turno_cancelar"),
 ]
 
 __all__ = ["urlpatterns"]

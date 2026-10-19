@@ -1,5 +1,6 @@
 {% comment %}Botones superiores del panel dentro de un torneo (escritorio y menú móvil).{% endcomment %}
 {% if user.is_staff or user.is_superuser %}<a class="btn btn--secondary btn--sm" href="{% url 'general_settings' %}">Usuarios</a>{% endif %}
+<a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos' %}">Turnos</a>
 <a class="btn btn--secondary btn--sm" href="{% url 'tournament_edit' tournament.slug %}">Configuración</a>
 <a class="btn btn--secondary btn--sm" href="{% url 'tournament_exit' %}">Inicio</a>
 <form method="post" action="{% url 'account_logout' %}" class="inline-form">{% csrf_token %}<button class="btn btn--secondary btn--sm" type="submit">Salir</button></form>

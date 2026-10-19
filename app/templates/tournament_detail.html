@@ -16,6 +16,7 @@
         <span class="chip chip--{{ tournament.status }}">{{ tournament.get_status_display }}</span>
       </div>
       <div class="padel-actions">
+        <a class="btn btn--secondary btn--sm" href="{% url 'turnos' %}">Sacar turno</a>
         <a class="btn btn--secondary btn--sm" href="{% url 'public_tournaments' %}">Todos los torneos</a>
         <a class="btn btn--primary btn--sm" href="{% url 'tournament_choose' tournament.slug %}">Administrar</a>
       </div>
