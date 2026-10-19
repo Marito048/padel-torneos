@@ -7,13 +7,19 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
 ## Funcionalidades
 
 - **Turnos de cancha**: página pública **/turnos/** para reservar sin registrarse (nombre y
-  WhatsApp), con grilla de horarios libres por cancha y día (próximos 14 días), código de
-  confirmación y cancelación online. En el panel, **Turnos** muestra la agenda del día, permite
-  cargar reservas manuales, bloquear horarios (mantenimiento) y liberar/cancelar; **Turnos →
-  Horarios y feriados** configura por complejo el primer turno, el cierre y la duración (1,5 h
-  por defecto) para días hábiles, sábados y domingos, con **pausas** que cortan la secuencia
-  (al terminar la pausa los turnos continúan con la misma duración) y **fechas especiales**
-  (feriados) con cierre total o horario propio.
+  WhatsApp), con **calendario mensual** para elegir el día (días cerrados y fuera de la ventana
+  atenuados, «hoy» marcado, navegación de meses, ventana de 60 días) y grilla de horarios libres
+  por cancha, código de confirmación y cancelación online. El **precio del turno** y los datos de
+  cobro (**alias/CVU, titular y link de Mercado Pago**) se configuran por complejo en **Turnos →
+  Precio y avisos** y se muestran al reservar y confirmar; el panel marca cada turno como
+  **abonado/pendiente** y lleva los totales del día. Cada reserva puede avisarse por **WhatsApp**:
+  el cliente al complejo desde la confirmación y el panel al cliente con el botón «Avisar»
+  (wa.me), y con CallMeBot configurado el complejo recibe el aviso automático. En el panel,
+  **Turnos** muestra la agenda del día, permite cargar reservas manuales, bloquear horarios
+  (mantenimiento) y liberar/cancelar; **Turnos → Horarios y feriados** configura por complejo el
+  primer turno, el cierre y la duración (1,5 h por defecto) para días hábiles, sábados y domingos,
+  con **pausas** que cortan la secuencia (al terminar la pausa los turnos continúan con la misma
+  duración) y **fechas especiales** (feriados) con cierre total o horario propio.
 - **Portada pública** (**/**): landing con accesos grandes a «Sacar un turno» y «Ver torneos»;
   los usuarios logueados ven además el botón al panel de gestión. El ingreso del personal queda
   en «Ingresar».
@@ -183,7 +189,9 @@ sistema avisa por:
   «I allow callmebot to send me messages» y anotar la apikey que contesta. Después cargar en
   `.env` `WHATSAPP_ALERT_PHONE=+549341XXXXXXX` (con código de país) y `WHATSAPP_ALERT_APIKEY=...`,
   y reiniciar. Es un servicio gratuito de terceros; si preferís algo oficial está la API de
-  WhatsApp Business (Meta) o Twilio, con más trámite.
+  WhatsApp Business (Meta) o Twilio, con más trámite. **Los turnos usan este mecanismo**: cada
+  complejo puede cargar su propio WhatsApp y apikey en *Precio y avisos* (si no, se usa el `.env`);
+  además el cliente y el panel tienen botones `wa.me` para avisarse mutuamente sin costo.
 
 En cualquier caso la solicitud siempre queda listada en Configuración general → Solicitudes de
 registro.
@@ -203,15 +211,19 @@ bajo systemd.
   está en `.env` → `DATABASE_URL`). La base `padel` pre-existente (tablas `clubes`/`torneos`,
   sin datos) quedó intacta.
 - Actualizar código desde la PC de desarrollo:
-  `rsync -az --exclude=__pycache__ --exclude='*.pyc' ~/padel-torneos/ padel@192.168.0.200:padel-torneos/`
-  y después `sudo systemctl restart padel-torneos`.
+  `rsync -az --exclude=__pycache__ --exclude='*.pyc' --exclude=.env --exclude=.git --exclude=backups --exclude=staticfiles ~/padel-torneos/ padel@192.168.0.200:padel-torneos/`
+  (el `--exclude=.env` evita pisar la configuración del LXC, que apunta al Postgres del sistema).
+  Después, dentro de `~/padel-torneos/app`: `../.venv/bin/python manage.py collectstatic --noinput`
+  y `sudo systemctl restart padel-torneos` (el servicio corre `migrate` solo al arrancar).
 - Docker (`docker.io` + `docker-compose`) quedó instalado pero deshabilitado. Si algún día se
   habilita `nesting=1,keyctl=1` en Proxmox, se puede volver al flujo `docker compose` de local.
 - Datos iniciales: copia restaurada del dump
   `backups/padel_backup_20261016_003339_handoff_lxc.sql` (3 usuarios, 2 torneos, 106 jugadores,
   12 parejas). Desde ese momento cada entorno tiene su propia base: lo que se cargue en uno
   **no** aparece en el otro.
-- Para exponer el LXC con ngrok: instalar ngrok ahí y correr `ngrok http 8080`.
+- Para exponer el LXC con ngrok: instalar ngrok ahí y correr `ngrok http 8080`. Quedó configurado
+  con el dominio fijo `https://brunch-unfitted-guacamole.ngrok-free.dev` (los formularios funcionan
+  porque el origen coincide con el host).
 
 ## Backups
 
