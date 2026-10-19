@@ -1968,7 +1968,10 @@ def _parse_time(raw):
 
 
 def _selected_public_complex(request):
-    complexes = list(Complex.objects.filter(is_active=True).order_by("name"))
+    # El público solo ve complejos que pueden recibir reservas (con canchas activas).
+    complexes = list(
+        Complex.objects.filter(is_active=True, courts__is_active=True).distinct().order_by("name")
+    )
     slug = request.GET.get("complejo") or ""
     selected = next((item for item in complexes if item.slug == slug), None)
     if selected is None and complexes:

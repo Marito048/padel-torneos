@@ -228,10 +228,18 @@ class PublicBookingTests(TurnosFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, booking.code)
 
-    def test_other_complex_without_courts_shows_message(self):
+    def test_complex_without_courts_is_not_offered_publicly(self):
         other = self.make_complex(slug="complejo-2", name="Complejo 2")
         response = self.client.get(reverse("turnos"), {"complejo": other.slug, "fecha": self.day.isoformat()})
-        self.assertContains(response, "todavía no tiene canchas")
+        self.assertEqual(response.status_code, 200)
+        # El selector público solo muestra complejos con canchas activas.
+        self.assertNotContains(response, "Complejo 2")
+        self.assertContains(response, self.complex.name)
+
+    def test_no_bookable_complexes_shows_message(self):
+        Court.objects.update(is_active=False)
+        response = self.client.get(reverse("turnos"), {"fecha": self.day.isoformat()})
+        self.assertContains(response, "no hay complejos disponibles")
 
 
 class PanelTurnosTests(TurnosFixtureMixin, TestCase):
