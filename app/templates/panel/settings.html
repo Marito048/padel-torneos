@@ -24,6 +24,7 @@
           <th>Complejo</th>
           <th>Ciudad</th>
           <th>Torneos</th>
+          <th>Usuarios</th>
           <th></th>
         </tr>
       </thead>
@@ -33,7 +34,22 @@
             <td>{{ complex.name }}</td>
             <td>{% if complex.city %}{{ complex.city }}{% else %}<span class="muted">—</span>{% endif %}</td>
             <td>{{ complex.tournaments.count }}</td>
-            <td><a class="btn btn--secondary btn--sm" href="{% url 'general_complex_edit' complex.pk %}">Editar</a></td>
+            <td>{{ complex.user_count }}</td>
+            <td>
+              <div class="table-actions">
+                <a class="btn btn--secondary btn--sm" href="{% url 'general_complex_edit' complex.pk %}">Editar</a>
+                {% if not is_general_admin and complex.user_count > 1 %}
+                  <form method="post" action="{% url 'general_complex_leave' complex.pk %}" class="inline-form"
+                        data-confirm="¿Dejar de administrar «{{ complex.name }}»? El complejo y sus datos quedan para el resto de los usuarios.">
+                    {% csrf_token %}
+                    <button class="btn btn--secondary btn--sm" type="submit">Dejar de administrar</button>
+                  </form>
+                {% endif %}
+                {% if is_general_admin or complex.user_count == 1 %}
+                  <a class="btn btn--danger btn--sm" href="{% url 'general_complex_delete' complex.pk %}">Eliminar</a>
+                {% endif %}
+              </div>
+            </td>
           </tr>
         {% endfor %}
       </tbody>
@@ -352,9 +368,22 @@
               {% else %}
                 <span class="chip chip--draft">Sin panel</span>
               {% endif %}
-              {% if not row.account.is_active %}<span class="chip chip--draft">Inactivo</span>{% endif %}
+              {% if not row.account.is_active %}<span class="chip chip--draft">Suspendido</span>{% endif %}
             </td>
-            <td><a class="btn btn--secondary btn--sm" href="{% url 'general_user_edit' row.account.pk %}">Editar</a></td>
+            <td>
+              <div class="table-actions">
+                <a class="btn btn--secondary btn--sm" href="{% url 'general_user_edit' row.account.pk %}">Editar</a>
+                {% if not row.is_self %}
+                  <form method="post" action="{% url 'general_user_toggle_active' row.account.pk %}" class="inline-form">
+                    {% csrf_token %}
+                    <button class="btn btn--secondary btn--sm" type="submit">{% if row.account.is_active %}Suspender{% else %}Reactivar{% endif %}</button>
+                  </form>
+                  {% if is_general_admin %}
+                    <a class="btn btn--danger btn--sm" href="{% url 'general_user_delete' row.account.pk %}">Eliminar</a>
+                  {% endif %}
+                {% endif %}
+              </div>
+            </td>
           </tr>
         {% endfor %}
       </tbody>

@@ -27,6 +27,13 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
   Cada usuario del panel puede crear y editar su propio complejo desde Configuración general;
   el único dato compartido entre complejos es la base de jugadores.
   El acceso a datos se valida siempre server-side (URL/sesión manipuladas no otorgan acceso).
+- **Cuentas y complejos**: el administrador general puede **suspender** una cuenta (por ejemplo,
+  por licencia impaga: no puede ingresar y conserva todos sus datos) o **eliminarla
+  definitivamente** junto con los complejos de los que es único responsable (con sus torneos,
+  canchas, horarios y reservas). Los complejos compartidos con otras personas no se borran: sólo
+  se desvincula al usuario, y la base compartida de jugadores y duplas se conserva. Cada usuario
+  puede eliminar sus propios complejos o dejar de administrar los compartidos desde
+  Configuración general.
 - **Panel de gestión por torneo** con secciones: Resumen, Parejas, Zonas, Partidos,
   Resultados, Clasificación y Llaves eliminatorias. El torneo seleccionado se guarda en sesión.
 - **Parejas**: un jugador no puede integrar dos duplas del mismo torneo (validación en UI,

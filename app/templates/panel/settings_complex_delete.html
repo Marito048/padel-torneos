@@ -1,0 +1,63 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Eliminar {{ complex.name }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Eliminar complejo «{{ complex.name }}»</h1>
+  <p class="muted">Esta acción es definitiva y no se puede deshacer.</p>
+  <div class="padel-actions">
+    <a class="btn btn--secondary btn--sm" href="{% url 'general_complex_edit' complex.pk %}">Volver al complejo</a>
+    <a class="btn btn--secondary btn--sm" href="{% url 'general_settings' %}#complejos">Configuración general</a>
+  </div>
+</section>
+
+<section class="padel-card">
+  <h2>Qué se va a eliminar</h2>
+  <table class="data-table">
+    <tbody>
+      <tr><th>Torneos</th><td>{{ stats.tournaments }}</td></tr>
+      <tr><th>Canchas</th><td>{{ stats.courts }}</td></tr>
+      <tr><th>Reservas de turnos</th><td>{{ stats.bookings }}</td></tr>
+      <tr><th>Usuarios asignados</th><td>{{ stats.users }}</td></tr>
+    </tbody>
+  </table>
+  <p class="help">
+    Se borran el complejo y todos sus torneos, zonas, partidos, canchas, horarios y reservas.
+    Los jugadores y las duplas de la base compartida se conservan.
+  </p>
+
+  {% if not can_delete %}
+    <div class="alert alert--error">
+      Este complejo también está asignado a otras personas ({% for user in other_users %}{{ user.username }}{% if not forloop.last %}, {% endif %}{% endfor %}).
+      Para no borrarles sus datos, sólo el administrador general puede eliminarlo.
+    </div>
+    <p>
+      Si ya no querés administrarlo, podés dejar de hacerlo sin borrar nada:
+    </p>
+    <form method="post" action="{% url 'general_complex_leave' complex.pk %}" class="inline-form"
+          data-confirm="¿Dejar de administrar «{{ complex.name }}»? El complejo y sus datos quedan para el resto de los usuarios.">
+      {% csrf_token %}
+      <button class="btn btn--secondary" type="submit">Dejar de administrar</button>
+    </form>
+  {% else %}
+    {% if other_users %}
+      <div class="alert alert--error">
+        Ojo: también está asignado a
+        {% for user in other_users %}{{ user.username }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+        Al eliminar el complejo, esas personas pierden el acceso a sus torneos y reservas.
+      </div>
+    {% endif %}
+    <h2>Confirmación</h2>
+    <form method="post" class="form-grid">
+      {% csrf_token %}
+      <label>Escribí <strong>{{ complex.name }}</strong> para confirmar
+        <input type="text" name="confirm_name" required autocomplete="off"
+               placeholder="{{ complex.name }}">
+      </label>
+      <div class="form-actions">
+        <button class="btn btn--danger" type="submit">Eliminar complejo</button>
+        <a class="btn btn--secondary" href="{% url 'general_complex_edit' complex.pk %}">Cancelar</a>
+      </div>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

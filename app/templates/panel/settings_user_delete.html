@@ -1,0 +1,73 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Eliminar usuario {{ account.username }}{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Eliminar usuario «{{ account.username }}»</h1>
+  <p class="muted">Esta acción es definitiva y no se puede deshacer.</p>
+  <div class="padel-actions">
+    <a class="btn btn--secondary btn--sm" href="{% url 'general_user_edit' account.pk %}">Volver al usuario</a>
+    <a class="btn btn--secondary btn--sm" href="{% url 'general_settings' %}">Configuración general</a>
+  </div>
+</section>
+
+<section class="padel-card">
+  <h2>Qué se va a eliminar</h2>
+  {% if owned_complexes %}
+    <p>
+      Se eliminan los complejos de los que <strong>{{ account.username }}</strong> es único
+      responsable, junto con sus torneos, canchas, horarios y reservas:
+    </p>
+    <table class="data-table">
+      <thead>
+        <tr><th>Complejo</th><th>Torneos</th><th>Canchas</th><th>Reservas</th></tr>
+      </thead>
+      <tbody>
+        {% for item in owned_complexes %}
+          <tr>
+            <td>{{ item.complex.name }}</td>
+            <td>{{ item.stats.tournaments }}</td>
+            <td>{{ item.stats.courts }}</td>
+            <td>{{ item.stats.bookings }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="help">En total se eliminan {{ owned_tournaments }} torneo(s).</p>
+  {% else %}
+    <p class="muted">No es único responsable de ningún complejo, así que no se borran complejos.</p>
+  {% endif %}
+
+  {% if shared_complexes %}
+    <h2>Complejos compartidos</h2>
+    <p>
+      Estos complejos <strong>no se eliminan</strong> porque tienen otras personas asignadas:
+      sólo se desvincula a {{ account.username }}.
+    </p>
+    <ul class="pause-list">
+      {% for complex in shared_complexes %}
+        <li><span>{{ complex.name }}</span></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <p class="help">
+    Los jugadores y las duplas de la base compartida se conservan para usarlos en otros
+    torneos. La cuenta de usuario se borra por completo y no podrá volver a ingresar.
+  </p>
+</section>
+
+<section class="padel-card">
+  <h2>Confirmación</h2>
+  <form method="post" class="form-grid">
+    {% csrf_token %}
+    <label>Escribí <strong>{{ account.username }}</strong> para confirmar
+      <input type="text" name="confirm_username" required autocomplete="off"
+             placeholder="{{ account.username }}">
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--danger" type="submit">Eliminar definitivamente</button>
+      <a class="btn btn--secondary" href="{% url 'general_user_edit' account.pk %}">Cancelar</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -21,11 +21,31 @@ urlpatterns = [
         views.general_user_edit,
         name="general_user_edit",
     ),
+    path(
+        "gestion/configuracion/usuarios/<int:user_id>/estado/",
+        views.general_user_toggle_active,
+        name="general_user_toggle_active",
+    ),
+    path(
+        "gestion/configuracion/usuarios/<int:user_id>/eliminar/",
+        views.general_user_delete,
+        name="general_user_delete",
+    ),
     path("gestion/configuracion/complejos/crear/", views.general_complex_create, name="general_complex_create"),
     path(
         "gestion/configuracion/complejos/<int:complex_id>/",
         views.general_complex_edit,
         name="general_complex_edit",
+    ),
+    path(
+        "gestion/configuracion/complejos/<int:complex_id>/eliminar/",
+        views.general_complex_delete,
+        name="general_complex_delete",
+    ),
+    path(
+        "gestion/configuracion/complejos/<int:complex_id>/dejar/",
+        views.general_complex_leave,
+        name="general_complex_leave",
     ),
     path(
         "gestion/configuracion/invitaciones/crear/",

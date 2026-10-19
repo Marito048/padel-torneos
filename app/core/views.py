@@ -859,7 +859,11 @@ def general_settings(request):
             | Q(last_name__icontains=query)
             | Q(email__icontains=query)
         )
-    manageable_complexes = list(_manageable_complexes(account))
+    manageable_complexes = list(_manageable_complexes(account).order_by("name"))
+    for complex_obj in manageable_complexes:
+        # No usar annotate(Count("users")): el M2M ya viene unido por el usuario
+        # que consulta y contaría sólo su propia fila.
+        complex_obj.user_count = complex_obj.users.count()
     rows = [
         {
             "account": entry,
@@ -1075,8 +1079,139 @@ def general_user_edit(request, user_id):
             "account": account,
             "is_self": is_self,
             "can_grant_superuser": requester.is_superuser and not is_self,
+            "can_delete_user": requester.is_superuser and not is_self,
             "complexes": list(_manageable_complexes(requester)),
             "account_complex_ids": complex_ids,
+        },
+    )
+
+
+@login_required
+@require_POST
+def general_user_toggle_active(request, user_id):
+    """Suspende o reactiva una cuenta sin borrar sus datos.
+
+    Pensado para licencias impagas: el usuario no puede ingresar, pero sus
+    complejos, torneos y reservas quedan intactos para cuando se regularice.
+    """
+    requester = _require_settings_access(request)
+    account = get_object_or_404(UserModel, pk=user_id)
+    if not _can_manage_user(requester, account):
+        raise PermissionDenied("No podés administrar ese usuario.")
+    if account.pk == requester.pk:
+        messages.error(request, "No podés suspender tu propia cuenta.")
+    elif account.is_superuser and not requester.is_superuser:
+        raise PermissionDenied("Sólo otro administrador general puede suspender a un administrador general.")
+    else:
+        account.is_active = not account.is_active
+        account.save(update_fields=["is_active"])
+        if account.is_active:
+            messages.success(
+                request, f"Usuario «{account.username}» reactivado: ya puede volver a ingresar."
+            )
+        else:
+            messages.success(
+                request,
+                f"Usuario «{account.username}» suspendido: no puede ingresar, pero sus datos, "
+                "complejos y torneos se conservan.",
+            )
+    if request.POST.get("volver") == "editar":
+        return redirect("general_user_edit", user_id=account.pk)
+    return redirect("general_settings")
+
+
+def _user_complexes_split(account) -> tuple[list[Complex], list[Complex]]:
+    """Separa los complejos propios (único usuario) de los compartidos."""
+    owned: list[Complex] = []
+    shared: list[Complex] = []
+    for complex_obj in account.complexes.all():
+        if complex_obj.users.exclude(pk=account.pk).exists():
+            shared.append(complex_obj)
+        else:
+            owned.append(complex_obj)
+    return owned, shared
+
+
+def _complex_delete_stats(complex_obj: Complex) -> dict:
+    return {
+        "tournaments": complex_obj.tournaments.count(),
+        "courts": complex_obj.courts.count(),
+        "bookings": CourtBooking.objects.filter(complex=complex_obj).count(),
+        "users": complex_obj.users.count(),
+    }
+
+
+def _delete_complex(complex_obj: Complex) -> None:
+    """Elimina el complejo con sus torneos, canchas y reservas.
+
+    Los jugadores y las duplas de la base compartida no se tocan: se reutilizan
+    en otros complejos y torneos.
+    """
+    with transaction.atomic():
+        complex_obj.tournaments.all().delete()
+        complex_obj.courts.all().delete()
+        complex_obj.delete()
+
+
+@login_required
+def general_user_delete(request, user_id):
+    """Elimina una cuenta y los complejos de los que es único responsable."""
+    requester = _require_settings_access(request)
+    if not requester.is_superuser:
+        raise PermissionDenied("Sólo el administrador general puede eliminar usuarios.")
+    account = get_object_or_404(UserModel, pk=user_id)
+    if account.pk == requester.pk:
+        messages.error(request, "No podés eliminar tu propia cuenta.")
+        return redirect("general_settings")
+
+    owned, shared = _user_complexes_split(account)
+    if request.method == "POST":
+        typed = (request.POST.get("confirm_username") or "").strip()
+        if typed.casefold() != (account.username or "").strip().casefold():
+            messages.error(
+                request, "Escribí el nombre de usuario exacto para confirmar la eliminación."
+            )
+        else:
+            username = account.username
+            owned_names = [complex_obj.name for complex_obj in owned]
+            shared_names = [complex_obj.name for complex_obj in shared]
+            with transaction.atomic():
+                for complex_obj in owned:
+                    _delete_complex(complex_obj)
+                for complex_obj in shared:
+                    complex_obj.users.remove(account)
+                account.delete()
+            messages.success(request, f"Usuario «{username}» eliminado definitivamente.")
+            if owned_names:
+                messages.info(
+                    request,
+                    "Se eliminaron sus complejos: " + ", ".join(owned_names)
+                    + " (con sus torneos, canchas y reservas).",
+                )
+            if shared_names:
+                messages.info(
+                    request,
+                    "Quedaron sin este usuario porque los comparte con otras personas: "
+                    + ", ".join(shared_names) + ".",
+                )
+            messages.info(
+                request, "Los jugadores y duplas de la base compartida se conservaron."
+            )
+            return redirect("general_settings")
+
+    return render(
+        request,
+        "panel/settings_user_delete.html",
+        {
+            "account": account,
+            "owned_complexes": [
+                {"complex": complex_obj, "stats": _complex_delete_stats(complex_obj)}
+                for complex_obj in owned
+            ],
+            "shared_complexes": shared,
+            "owned_tournaments": sum(
+                _complex_delete_stats(complex_obj)["tournaments"] for complex_obj in owned
+            ),
         },
     )
 
@@ -1135,6 +1270,80 @@ def general_complex_edit(request, complex_id):
         "panel/settings_complex_form.html",
         {"complex": complex_obj},
     )
+
+
+@login_required
+def general_complex_delete(request, complex_id):
+    """Elimina un complejo con sus torneos, canchas y reservas.
+
+    Un usuario común sólo puede eliminar complejos de los que es único
+    responsable; los compartidos los elimina el administrador general (o puede
+    dejar de administrarlos). El nombre exacto se usa como confirmación.
+    """
+    requester = _require_settings_access(request)
+    complex_obj = _manageable_complex(requester, complex_id)
+    other_users = complex_obj.users.exclude(pk=requester.pk)
+    can_delete = requester.is_superuser or not other_users.exists()
+    if request.method == "POST":
+        if not can_delete:
+            messages.error(
+                request,
+                "Ese complejo tiene otros usuarios asignados. Pedile al administrador general "
+                "que lo elimine o usá «Dejar de administrar».",
+            )
+        else:
+            typed = (request.POST.get("confirm_name") or "").strip()
+            if typed.casefold() != complex_obj.name.strip().casefold():
+                messages.error(
+                    request, "Escribí el nombre del complejo exacto para confirmar la eliminación."
+                )
+            else:
+                name = complex_obj.name
+                _delete_complex(complex_obj)
+                messages.success(
+                    request,
+                    f"Complejo «{name}» eliminado con sus torneos, canchas y reservas.",
+                )
+                messages.info(
+                    request, "Los jugadores y duplas de la base compartida se conservaron."
+                )
+                return redirect("general_settings")
+    return render(
+        request,
+        "panel/settings_complex_delete.html",
+        {
+            "complex": complex_obj,
+            "stats": _complex_delete_stats(complex_obj),
+            "other_users": other_users,
+            "can_delete": can_delete,
+        },
+    )
+
+
+@login_required
+@require_POST
+def general_complex_leave(request, complex_id):
+    """Quita al usuario del complejo sin borrar los datos compartidos."""
+    requester = _require_settings_access(request)
+    complex_obj = _manageable_complex(requester, complex_id)
+    if requester.is_superuser:
+        messages.error(
+            request,
+            "El administrador general no deja de administrar complejos: si no lo usás más, eliminalo.",
+        )
+        return redirect("general_settings")
+    if not complex_obj.users.exclude(pk=requester.pk).exists():
+        messages.error(
+            request,
+            "Sos la única persona a cargo de ese complejo. Si no lo vas a usar más, eliminalo.",
+        )
+        return redirect("general_settings")
+    complex_obj.users.remove(requester)
+    messages.success(
+        request,
+        f"Dejaste de administrar «{complex_obj.name}». El complejo sigue a cargo del resto de los usuarios.",
+    )
+    return redirect("general_settings")
 
 
 @login_required

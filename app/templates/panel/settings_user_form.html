@@ -6,7 +6,7 @@
   <p class="muted">
     {% if account.is_superuser %}<span class="chip chip--running">Administrador general</span>{% endif %}
     {% if account.is_staff %}<span class="chip chip--running">Acceso al panel</span>{% endif %}
-    {% if not account.is_active %}<span class="chip chip--draft">Inactivo</span>{% endif %}
+    {% if not account.is_active %}<span class="chip chip--draft">Suspendido</span>{% endif %}
     {% if is_self %}<span class="chip chip--open">Vos</span>{% endif %}
   </p>
 </section>
@@ -70,7 +70,7 @@
           <span>Estado</span>
           <span class="check-field">
             <input type="checkbox" name="is_active" value="1"{% if account.is_active %} checked{% endif %}>
-            Usuario activo (puede ingresar)
+            Cuenta activa (puede ingresar). Destildá y guardá para suspenderla.
           </span>
         </label>
         <label>
@@ -112,4 +112,35 @@
     <a class="btn btn--secondary" href="{% url 'general_settings' %}">Volver a configuración</a>
   </div>
 </form>
+
+{% if not is_self %}
+  <section class="padel-card">
+    <h2>Licencia y estado de la cuenta</h2>
+    <p class="muted">
+      Suspender la cuenta por falta de pago bloquea el ingreso, pero conserva todos sus
+      complejos, torneos, canchas y reservas. Al reactivarla vuelve a entrar normalmente.
+    </p>
+    <div class="padel-actions">
+      <form method="post" action="{% url 'general_user_toggle_active' account.pk %}" class="inline-form">
+        {% csrf_token %}
+        <input type="hidden" name="volver" value="editar">
+        {% if account.is_active %}
+          <button class="btn btn--danger" type="submit">Suspender cuenta</button>
+        {% else %}
+          <button class="btn btn--primary" type="submit">Reactivar cuenta</button>
+        {% endif %}
+      </form>
+      {% if can_delete_user %}
+        <a class="btn btn--danger" href="{% url 'general_user_delete' account.pk %}">Eliminar definitivamente</a>
+      {% endif %}
+    </div>
+    {% if can_delete_user %}
+      <p class="help">
+        «Eliminar definitivamente» borra la cuenta y los complejos de los que es único
+        responsable, con sus torneos, canchas y reservas. Los complejos compartidos con
+        otras personas no se borran: sólo se desvincula al usuario.
+      </p>
+    {% endif %}
+  </section>
+{% endif %}
 {% endblock %}
