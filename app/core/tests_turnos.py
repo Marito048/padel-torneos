@@ -958,6 +958,7 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 302)
         self.complex.refresh_from_db()
         self.assertTrue(self.complex.has_mp_token)
+        self.assertEqual(self.complex.mp_token_mode, "production")
         self.assertEqual(self.complex.mp_access_token, token)
         self.assertNotIn(token, self.complex.mp_access_token_encrypted)
 
@@ -984,6 +985,43 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         )
         self.complex.refresh_from_db()
         self.assertFalse(self.complex.has_mp_token)
+
+    def test_settings_show_token_status_without_the_secret(self):
+        admin = User.objects.create_superuser("admin-token-ui", password="clave-segura-123")
+        self.client.force_login(admin)
+        response = self.client.get(
+            reverse("panel_turnos_ajustes"), {"complejo": self.complex.slug}
+        )
+        self.assertContains(response, "Token de producción cargado")
+        self.assertContains(response, "El campo de abajo siempre aparece vacío")
+        self.assertContains(response, "Dejalo vacío para conservar el token")
+        self.assertNotContains(response, "APP_USR-12345678901234567890")
+
+    def test_settings_reject_a_payment_link_as_token(self):
+        self.complex.mp_access_token = ""
+        self.complex.save(update_fields=["mp_access_token_encrypted"])
+        admin = User.objects.create_superuser("admin-link", password="clave-segura-123")
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse("panel_horarios_accion"),
+            {
+                "complejo": self.complex.slug,
+                "accion": "guardar_ajustes",
+                "precio": "8000",
+                "mp_access_token": "https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=123",
+            },
+            follow=True,
+        )
+        self.assertContains(response, "no es un access token")
+        self.complex.refresh_from_db()
+        self.assertFalse(self.complex.has_mp_token)
+
+    def test_invalid_stored_token_is_ignored(self):
+        self.complex.mp_access_token = "https://www.mercadopago.com.ar/link-de-pago"
+        self.complex.save(update_fields=["mp_access_token_encrypted"])
+        self.complex.refresh_from_db()
+        self.assertFalse(self.complex.has_mp_token)
+        self.assertEqual(self.complex.mp_token_mode, "")
 
 
 class PublicCalendarViewTests(TurnosFixtureMixin, TestCase):

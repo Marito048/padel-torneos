@@ -137,8 +137,18 @@ class Complex(models.Model):
         return self.name
 
     @property
+    def mp_token_mode(self) -> str:
+        """Indica si el token guardado es de prueba, producción o inválido."""
+        token = self.mp_access_token
+        if token.startswith("TEST-"):
+            return "test"
+        if token.startswith("APP_USR-"):
+            return "production"
+        return ""
+
+    @property
     def has_mp_token(self) -> bool:
-        return bool(self.mp_access_token)
+        return bool(self.mp_token_mode)
 
     @property
     def mp_access_token(self) -> str:

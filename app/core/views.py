@@ -3294,8 +3294,18 @@ def panel_horarios_accion(request):
                 messages.error(request, "El link de Mercado Pago no parece válido.")
                 return redirect(ajustes_back)
 
-        token_raw = (request.POST.get("mp_access_token") or "").strip()
+        token_raw = (request.POST.get("mp_access_token") or "").strip().strip("'\"")
         clear_token = request.POST.get("mp_clear_token") == "on"
+        if clear_token:
+            token_raw = ""
+        if token_raw and not token_raw.startswith(("APP_USR-", "TEST-")):
+            messages.error(
+                request,
+                "Eso no es un access token. Si copiaste una dirección que empieza con "
+                "https://, es un link de pago y no sirve. Pegá el Access token de "
+                "Mercado Pago Developers (empieza con APP_USR- o TEST-).",
+            )
+            return redirect(ajustes_back)
         if token_raw and len(token_raw) < 20:
             messages.error(request, "El access token de Mercado Pago no parece válido.")
             return redirect(ajustes_back)

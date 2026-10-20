@@ -39,9 +39,19 @@
         <p class="help">Dejalo en 0 si los turnos no tienen precio. El precio se muestra en la página pública al reservar.</p>
 
         <h3>Cobro online de la seña</h3>
-        <label>Access token de Mercado Pago
+        <p class="help">
+          {% if selected_complex.has_mp_token %}
+            <span class="status-pill status-pill--done">Token de {% if selected_complex.mp_token_mode == "test" %}prueba{% else %}producción{% endif %} cargado</span>
+            El cobro online está activo. El campo de abajo siempre aparece vacío, incluso con el token
+            guardado: por seguridad no se muestran el token ni puntos. Si no escribís nada, se conserva.
+          {% else %}
+            <span class="status-pill status-pill--pending">Sin token</span>
+            El cobro online está inactivo; la reserva pública sigue siendo manual. Pegá el token para activarlo.
+          {% endif %}
+        </p>
+        <label>Access token de Mercado Pago (no es el link de pago)
           <input type="password" name="mp_access_token" maxlength="255" autocomplete="new-password"
-                 placeholder="{% if selected_complex.has_mp_token %}Configurado (dejalo vacío para conservarlo){% else %}APP_USR-...{% endif %}">
+                 placeholder="{% if selected_complex.has_mp_token %}Dejalo vacío para conservar el token{% else %}APP_USR-... o TEST-...{% endif %}">
         </label>
         {% if selected_complex.has_mp_token %}
           <label class="checkbox-row">
@@ -57,8 +67,8 @@
         </p>
         <p class="help">
           Se obtiene en <a href="https://www.mercadopago.com.ar/developers/panel/app" target="_blank" rel="noopener">Mercado Pago Developers</a>
-          → tu aplicación → Credenciales de producción. Usá un token <strong>APP_USR-</strong> para cobrar de verdad
-          o <strong>TEST-</strong> para probar.
+          → tu aplicación → Credenciales. Usá un token <strong>APP_USR-</strong> para cobrar de verdad
+          o <strong>TEST-</strong> para probar. Si empieza con <strong>https://</strong> es un link de pago, no un token.
         </p>
 
         <h3>Datos de cobro manual (respaldo)</h3>
