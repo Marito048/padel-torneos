@@ -14,15 +14,24 @@ import os
 
 from .prod import *  # noqa: F401,F403
 
-_RAILWAY_DOMAIN = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+# Railway inyecta RAILWAY_PUBLIC_DOMAIN (el principal) y
+# RAILWAY_STATIC_DOMAINS (lista separada por comas de todos los dominios
+# .up.railway.app del servicio). Se suman todos a ALLOWED_HOSTS y a
+# CSRF_TRUSTED_ORIGINS.
+_RAILWAY_DOMAINS = []
+for _var in ("RAILWAY_PUBLIC_DOMAIN", "RAILWAY_STATIC_DOMAINS"):
+    for _domain in os.environ.get(_var, "").split(","):
+        _domain = _domain.strip()
+        if _domain and _domain not in _RAILWAY_DOMAINS:
+            _RAILWAY_DOMAINS.append(_domain)
 
 _hosts = [h for h in (ALLOWED_HOSTS or []) if h]
 _origins = [o for o in (CSRF_TRUSTED_ORIGINS or []) if o]
 
-if _RAILWAY_DOMAIN:
-    if _RAILWAY_DOMAIN not in _hosts:
-        _hosts.append(_RAILWAY_DOMAIN)
-    _origin = f"https://{_RAILWAY_DOMAIN}"
+for _domain in _RAILWAY_DOMAINS:
+    if _domain not in _hosts:
+        _hosts.append(_domain)
+    _origin = f"https://{_domain}"
     if _origin not in _origins:
         _origins.append(_origin)
 
