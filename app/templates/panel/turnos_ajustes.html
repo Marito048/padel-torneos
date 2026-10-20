@@ -41,9 +41,11 @@
         <h3>Cobro online de la seña</h3>
         <p class="help">
           {% if selected_complex.has_mp_token %}
-            <span class="status-pill status-pill--done">Token de {% if selected_complex.mp_token_mode == "test" %}prueba{% else %}producción{% endif %} cargado</span>
-            El cobro online está activo. El campo de abajo siempre aparece vacío, incluso con el token
-            guardado: por seguridad no se muestran el token ni puntos. Si no escribís nada, se conserva.
+            <span class="status-pill status-pill--done">Token cargado</span>
+            El cobro online quedó configurado. El campo de abajo siempre aparece vacío, incluso con el
+            token guardado: por seguridad no se muestran el token ni puntos. Si no escribís nada, se conserva.
+            Si Mercado Pago muestra «cuenta de prueba» al pagar, el token pertenece a una cuenta de
+            prueba y no mueve dinero real.
           {% else %}
             <span class="status-pill status-pill--pending">Sin token</span>
             El cobro online está inactivo; la reserva pública sigue siendo manual. Pegá el token para activarlo.

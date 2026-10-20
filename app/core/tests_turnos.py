@@ -958,7 +958,6 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 302)
         self.complex.refresh_from_db()
         self.assertTrue(self.complex.has_mp_token)
-        self.assertEqual(self.complex.mp_token_mode, "production")
         self.assertEqual(self.complex.mp_access_token, token)
         self.assertNotIn(token, self.complex.mp_access_token_encrypted)
 
@@ -992,7 +991,7 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         response = self.client.get(
             reverse("panel_turnos_ajustes"), {"complejo": self.complex.slug}
         )
-        self.assertContains(response, "Token de producción cargado")
+        self.assertContains(response, "Token cargado")
         self.assertContains(response, "El campo de abajo siempre aparece vacío")
         self.assertContains(response, "Dejalo vacío para conservar el token")
         self.assertNotContains(response, "APP_USR-12345678901234567890")
@@ -1021,7 +1020,6 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         self.complex.save(update_fields=["mp_access_token_encrypted"])
         self.complex.refresh_from_db()
         self.assertFalse(self.complex.has_mp_token)
-        self.assertEqual(self.complex.mp_token_mode, "")
 
 
 class PublicCalendarViewTests(TurnosFixtureMixin, TestCase):
