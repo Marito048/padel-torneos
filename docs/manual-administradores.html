@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manual del administrador de canchas · Pádel Server</title>
+  <style>
+    @page { size: A4; }
+
+    :root {
+      --ink: #172033;
+      --muted: #5b667a;
+      --line: #dbe3ea;
+      --teal: #0f766e;
+      --teal-dark: #0b4f4a;
+      --teal-soft: #e6f4f1;
+      --amber: #b45309;
+      --amber-soft: #fff7e6;
+      --red: #b42318;
+      --red-soft: #fef3f2;
+      --blue-soft: #eef5ff;
+      --paper: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: #eef2f5;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      font-size: 11.2pt;
+      line-height: 1.55;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .sheet {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      background: var(--paper);
+      padding: 18mm 17mm 20mm;
+    }
+
+    .cover {
+      min-height: 261mm;
+      margin: -18mm -17mm 0;
+      padding: 28mm 22mm 20mm;
+      color: #fff;
+      background:
+        radial-gradient(circle at 88% 10%, rgba(245, 158, 11, .35), transparent 32%),
+        linear-gradient(145deg, #083c3a 0%, #0f766e 55%, #134e4a 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      font-size: 10pt;
+      opacity: .92;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      background: #f59e0b;
+      color: #172033;
+      font-weight: 800;
+      letter-spacing: -.03em;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: #a7f3d0;
+      text-transform: uppercase;
+      letter-spacing: .16em;
+      font-size: 9.5pt;
+      font-weight: 700;
+    }
+
+    .cover h1 {
+      margin: 0;
+      max-width: 150mm;
+      font-size: 35pt;
+      line-height: 1.06;
+      letter-spacing: -.025em;
+    }
+
+    .cover .subtitle {
+      margin: 12px 0 0;
+      max-width: 145mm;
+      color: #d1fae5;
+      font-size: 14.5pt;
+      line-height: 1.35;
+    }
+
+    .cover-meta {
+      margin-top: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .cover-meta span {
+      border: 1px solid rgba(255,255,255,.32);
+      background: rgba(255,255,255,.09);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 9pt;
+    }
+
+    .cover-bottom {
+      max-width: 150mm;
+      border-top: 1px solid rgba(255,255,255,.28);
+      padding-top: 14px;
+      color: #d1fae5;
+      font-size: 9.5pt;
+    }
+
+    .cover-bottom strong { color: #fff; }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: 19pt;
+      line-height: 1.2;
+      letter-spacing: -.015em;
+      color: var(--teal-dark);
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    h3 {
+      margin: 18px 0 6px;
+      font-size: 12.5pt;
+      color: var(--ink);
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    h4 {
+      margin: 14px 0 4px;
+      font-size: 10.8pt;
+      color: var(--teal-dark);
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    p { margin: 0 0 9px; }
+
+    ul, ol { margin: 6px 0 12px; padding-left: 20px; }
+
+    li { margin: 3px 0; }
+
+    a { color: var(--teal); text-decoration: none; }
+
+    .chapter {
+      margin-top: 20px;
+      padding-top: 4px;
+    }
+
+    .chapter + .chapter {
+      margin-top: 26px;
+      border-top: 1px solid var(--line);
+      padding-top: 22px;
+    }
+
+    .chapter-kicker {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--teal);
+      font-size: 8.5pt;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 11.8pt;
+    }
+
+    .toc {
+      page-break-after: always;
+    }
+
+    .toc-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 24px;
+      margin-top: 12px;
+    }
+
+    .toc a {
+      display: flex;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px dotted #cbd5e1;
+      color: var(--ink);
+      font-size: 10.5pt;
+    }
+
+    .toc a span {
+      color: var(--teal);
+      font-weight: 800;
+      min-width: 20px;
+    }
+
+    .callout {
+      margin: 12px 0;
+      padding: 10px 13px;
+      border-left: 4px solid var(--teal);
+      border-radius: 0 7px 7px 0;
+      background: var(--teal-soft);
+      break-inside: avoid;
+    }
+
+    .callout strong { color: var(--teal-dark); }
+
+    .callout--warning {
+      border-left-color: var(--amber);
+      background: var(--amber-soft);
+    }
+
+    .callout--warning strong { color: #92400e; }
+
+    .callout--danger {
+      border-left-color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .callout--danger strong { color: #912018; }
+
+    .callout--info {
+      border-left-color: #2563eb;
+      background: var(--blue-soft);
+    }
+
+    .callout--info strong { color: #1d4ed8; }
+
+    .card {
+      margin: 12px 0;
+      padding: 13px 15px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #fbfdfd;
+      break-inside: avoid;
+    }
+
+    .card h3, .card h4 { margin-top: 0; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .mini {
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .mini h4 { margin: 0 0 4px; }
+
+    .mini p { margin: 0; color: var(--muted); font-size: 9.8pt; }
+
+    table {
+      width: 100%;
+      margin: 10px 0 14px;
+      border-collapse: collapse;
+      font-size: 9.7pt;
+      break-inside: auto;
+    }
+
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+
+    th {
+      background: #e8f4f2;
+      color: var(--teal-dark);
+      text-align: left;
+      font-weight: 700;
+      padding: 7px 8px;
+      border: 1px solid #cfe1de;
+      vertical-align: top;
+    }
+
+    td {
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td { background: #fafcfc; }
+
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding-left: 0;
+      margin: 10px 0 14px;
+    }
+
+    .steps > li {
+      counter-increment: step;
+      position: relative;
+      padding-left: 34px;
+      margin: 8px 0;
+      break-inside: avoid;
+    }
+
+    .steps > li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 23px;
+      height: 23px;
+      border-radius: 50%;
+      background: var(--teal);
+      color: #fff;
+      font-size: 8.5pt;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .checklist {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .checklist li {
+      position: relative;
+      padding-left: 23px;
+      margin: 5px 0;
+    }
+
+    .checklist li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--teal);
+      font-weight: 800;
+    }
+
+    .ui {
+      display: inline-block;
+      padding: 1px 6px;
+      border: 1px solid #cbd5e1;
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 9.4pt;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--teal-soft);
+      color: var(--teal-dark);
+      font-size: 8.5pt;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .tag--amber { background: var(--amber-soft); color: #92400e; }
+    .tag--red { background: var(--red-soft); color: #912018; }
+    .tag--blue { background: var(--blue-soft); color: #1d4ed8; }
+
+    .muted { color: var(--muted); }
+    .small { font-size: 9.5pt; }
+
+    .page-break { page-break-before: always; }
+
+    .footer-note {
+      margin-top: 24px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 9pt;
+      text-align: center;
+    }
+
+    @media screen and (max-width: 820px) {
+      body { background: #fff; }
+      .sheet { width: 100%; min-height: 0; padding: 20px; }
+      .cover { min-height: 0; margin: -20px -20px 0; padding: 36px 24px 28px; }
+      .cover h1 { font-size: 28pt; }
+      .toc-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .toc { page-break-after: auto; }
+    }
+
+    @media print {
+      body { background: #fff; font-size: 10.4pt; }
+      .sheet { width: auto; min-height: 0; margin: 0; padding: 0; }
+      .cover { min-height: 255mm; margin: 0; padding: 28mm 20mm 18mm; }
+      .cover h1 { font-size: 33pt; }
+      a { color: inherit; text-decoration: none; }
+      .chapter + .chapter { margin-top: 20px; padding-top: 16px; }
+      h2 { font-size: 17pt; }
+      h3 { font-size: 11.7pt; }
+      table { font-size: 9.1pt; }
+      .callout, .card, .mini, .steps > li { break-inside: avoid; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="cover">
+    <div>
+      <div class="brand"><span class="badge">PA</span> Pádel Server</div>
+      <p class="eyebrow" style="margin-top: 48px;">Guía práctica</p>
+      <h1>Manual del administrador de canchas</h1>
+      <p class="subtitle">Turnos, cobros, torneos y usuarios del complejo.</p>
+      <div class="cover-meta">
+        <span>Versión 1.0</span>
+        <span>Octubre 2026</span>
+        <span>Para responsables y personal del complejo</span>
+      </div>
+    </div>
+    <div class="cover-bottom">
+      <p><strong>Este manual explica cómo usar el panel de gestión.</strong> Está pensado para quien abre el complejo, atiende reservas, cobra señas y saldos, organiza torneos o administra usuarios.</p>
+      <p style="margin-bottom:0;">No hace falta saber programar. Si una pantalla no coincide exactamente con este texto, tomá como válido lo que muestra el sistema y consultá a la administración general.</p>
+    </div>
+  </header>
+
+  <section class="toc">
+    <span class="chapter-kicker">Contenido</span>
+    <h2>Cómo está organizado</h2>
+    <p class="lead">Podés leer el manual completo o ir directo a la tarea que necesitás resolver.</p>
+    <div class="toc-grid">
+      <a href="#para-que"><span>01</span> Para qué sirve el panel</a>
+      <a href="#ingreso"><span>02</span> Ingreso y roles</a>
+      <a href="#configuracion"><span>03</span> Configuración inicial del complejo</a>
+      <a href="#agenda"><span>04</span> Agenda de turnos</a>
+      <a href="#cobros"><span>05</span> Seña, saldo y cobros</a>
+      <a href="#mercado-pago"><span>06</span> Mercado Pago: prueba y producción</a>
+      <a href="#torneos"><span>07</span> Torneos: creación y estados</a>
+      <a href="#parejas"><span>08</span> Parejas y jugadores</a>
+      <a href="#autoinscripcion"><span>09</span> Autoinscripción de parejas</a>
+      <a href="#zonas"><span>10</span> Zonas y partidos</a>
+      <a href="#resultados"><span>11</span> Resultados y clasificación</a>
+      <a href="#llaves"><span>12</span> Llaves eliminatorias</a>
+      <a href="#usuarios"><span>13</span> Usuarios y accesos</a>
+      <a href="#whatsapp"><span>14</span> Avisos por WhatsApp</a>
+      <a href="#tareas"><span>15</span> Tareas frecuentes</a>
+      <a href="#problemas"><span>16</span> Problemas frecuentes</a>
+      <a href="#buenas-practicas"><span>17</span> Buenas prácticas</a>
+      <a href="#glosario"><span>18</span> Glosario</a>
+    </div>
+    <div class="callout callout--info" style="margin-top: 22px;">
+      <strong>Atajo útil:</strong> si tenés una duda urgente durante la atención, la sección <a href="#problemas">Problemas frecuentes</a> reúne los casos más comunes: pagos que no se confirman, botón gris, turnos que no aparecen y torneos sin inscripción.
+    </div>
+  </section>
+
+  <section class="chapter" id="para-que">
+    <span class="chapter-kicker">01 · Panorama</span>
+    <h2>Para qué sirve el panel</h2>
+    <p class="lead">El panel es el lugar donde el complejo administra su operación diaria y sus competencias. La página pública, en cambio, es la que usan los clientes.</p>
+    <div class="grid-3">
+      <div class="mini">
+        <h4>Turnos</h4>
+        <p>Agenda del día, reservas manuales, bloqueos, horarios, feriados, precios, señas y saldos.</p>
+      </div>
+      <div class="mini">
+        <h4>Torneos</h4>
+        <p>Parejas, jugadores, zonas, partidos, resultados, clasificación y llaves eliminatorias.</p>
+      </div>
+      <div class="mini">
+        <h4>Complejo</h4>
+        <p>Canchas, datos del club, usuarios con acceso y avisos por WhatsApp.</p>
+      </div>
+    </div>
+    <p>El sistema es <strong>multi-complejo</strong>: cada complejo tiene sus propios torneos, canchas, horarios y reservas. La base de jugadores es compartida, así que un jugador cargado en un torneo queda disponible para los demás.</p>
+    <div class="callout">
+      <strong>Importante:</strong> los clientes no necesitan crear una cuenta para reservar un turno. Ingresan su nombre y WhatsApp en la página pública. La cuenta del panel es solo para el personal autorizado.
+    </div>
+  </section>
+
+  <section class="chapter" id="ingreso">
+    <span class="chapter-kicker">02 · Acceso</span>
+    <h2>Ingreso y roles</h2>
+    <p>Entrá desde la portada con <span class="ui">Ingresar al panel</span>. Podés hacerlo con el usuario y la contraseña que te entregó la administración, o con <span class="ui">Ingresar con Google</span> si tu email fue invitado.</p>
+
+    <h3>Roles</h3>
+    <table>
+      <thead>
+        <tr><th>Rol</th><th>Qué puede hacer</th><th>Alcance</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Administrador de complejo</strong></td>
+          <td>Gestionar turnos, torneos, canchas y usuarios de los complejos que tiene asignados.</td>
+          <td>Solo sus complejos.</td>
+        </tr>
+        <tr>
+          <td><strong>Administrador general</strong></td>
+          <td>Todo lo anterior, más invitaciones, solicitudes de registro, creación de administradores generales y eliminación de cuentas o complejos compartidos.</td>
+          <td>Todos los complejos.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Primer ingreso</h3>
+    <ul>
+      <li>Si la contraseña te la entregó la administración, el panel te va a recordar que la cambies por una propia.</li>
+      <li>La contraseña debe tener al menos 8 caracteres. No se exigen mayúsculas ni símbolos.</li>
+      <li>Si no tenés acceso, pedí una cuenta desde <span class="ui">Registrarse</span> en la pantalla de ingreso o contactá al administrador general.</li>
+      <li>En equipos compartidos, usá <span class="ui">Salir</span> al terminar. No compartas tu usuario.</li>
+    </ul>
+    <div class="callout callout--warning">
+      <strong>Cuentas suspendidas:</strong> una cuenta suspendida no puede ingresar, pero conserva todos sus complejos, torneos, canchas y reservas. Al reactivarla vuelve a funcionar normalmente.
+    </div>
+  </section>
+
+  <section class="chapter" id="configuracion">
+    <span class="chapter-kicker">03 · Puesta a punto</span>
+    <h2>Configuración inicial del complejo</h2>
+    <p class="lead">Antes de abrir la reserva pública, conviene dejar listos el complejo, las canchas, los horarios y el precio. El orden recomendado es este:</p>
+
+    <ol class="steps">
+      <li><strong>Crear el complejo.</strong> Andá a <span class="ui">Configuración general</span> → <span class="ui">Mis complejos</span> → <span class="ui">Agregar complejo</span>. Cargá nombre, ciudad, dirección, teléfono y email.</li>
+      <li><strong>Cargar las canchas.</strong> En el complejo, entrá a <span class="ui">Canchas</span> → <span class="ui">Agregar cancha</span>. Indicá nombre y superficie (césped artificial, cristal o muro). Dejá activas solo las canchas que se pueden reservar.</li>
+      <li><strong>Definir horarios.</strong> En <span class="ui">Turnos</span> → <span class="ui">Horarios y feriados</span>, configurá día hábil, sábado y domingo.</li>
+      <li><strong>Definir precio y avisos.</strong> En <span class="ui">Turnos</span> → <span class="ui">Precio y avisos</span>, cargá el precio, el cobro online y el WhatsApp del complejo.</li>
+      <li><strong>Dar acceso al personal.</strong> Desde <span class="ui">Configuración general</span> → <span class="ui">Agregar usuario</span>, creá una cuenta para cada persona y asignale el complejo.</li>
+    </ol>
+
+    <h3>Canchas</h3>
+    <p>Una cancha <strong>activa</strong> aparece en la reserva pública. Una cancha <strong>inactiva</strong> queda guardada, pero no se ofrece. Usá la desactivación para mantenimiento o para ocultar una cancha temporalmente, sin borrar su historial.</p>
+
+    <h3>Horarios y feriados</h3>
+    <p>Se configuran por separado para <strong>día hábil (lunes a viernes)</strong>, <strong>sábado</strong> y <strong>domingo</strong>. En cada uno podés definir:</p>
+    <table>
+      <thead>
+        <tr><th>Campo</th><th>Qué significa</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Abierto ese día</td><td>Si está destildado, ese tipo de día no ofrece turnos.</td></tr>
+        <tr><td>Primer turno</td><td>Hora en la que empieza la primera franja.</td></tr>
+        <tr><td>Cierre</td><td>Hora en la que termina la última franja. No se generan turnos que empiecen después.</td></tr>
+        <tr><td>Duración del turno</td><td>Minutos por franja, entre 30 y 240. Por defecto, 90 minutos.</td></tr>
+        <tr><td>Pausas</td><td>Cortan la secuencia. Ejemplo: pausa de 13:30 a 14:30; después siguen 14:30, 16:00, 17:30…</td></tr>
+      </tbody>
+    </table>
+    <p>En <strong>Feriados y fechas especiales</strong> podés cerrar todo el día o fijar un horario distinto solo para esa fecha. La nota se muestra al cliente y en el panel.</p>
+
+    <h3>Precio y avisos</h3>
+    <p>En <span class="ui">Precio y avisos</span> se concentra la parte comercial:</p>
+    <ul>
+      <li><strong>Precio del turno:</strong> se muestra en la página pública y se guarda en cada reserva al momento de crearla. Si después cambiás el precio, las reservas anteriores conservan el precio viejo.</li>
+      <li><strong>Cobro online de la seña:</strong> se activa cargando un access token de Mercado Pago. Sin token, el turno se reserva y se cobra de forma manual.</li>
+      <li><strong>Datos de cobro manual:</strong> alias o CVU, titular y link de pago. El cliente los ve al confirmar el turno.</li>
+      <li><strong>WhatsApp del complejo:</strong> número con código de país, solo números. Ejemplo: <span class="ui">5492215551234</span>.</li>
+      <li><strong>CallMeBot API key:</strong> opcional; permite que el complejo reciba un aviso automático por cada reserva nueva.</li>
+    </ul>
+    <div class="callout callout--warning">
+      <strong>Precio en cero:</strong> si el precio es 0, no se calcula seña y no se activa el cobro online. Dejalo en 0 solo si el complejo no cobra los turnos desde el sistema.
+    </div>
+    <div class="callout callout--info">
+      <strong>Antes de abrir:</strong> verificá que haya al menos una cancha activa, un horario abierto para el día, un precio correcto y, si vas a cobrar online, un token cargado.
+    </div>
+  </section>
+
+  <section class="chapter" id="agenda">
+    <span class="chapter-kicker">04 · Operación diaria</span>
+    <h2>Agenda de turnos</h2>
+    <p class="lead">En <span class="ui">Turnos</span> ves la agenda del día por cancha. Podés cambiar de complejo y de fecha, cargar reservas manuales, bloquear horarios y liberar turnos.</p>
+
+    <h3>Cómo reserva un cliente</h3>
+    <ol>
+      <li>Entra a la página pública y elige complejo y día en el calendario.</li>
+      <li>Ve la grilla de horarios libres por cancha y elige uno.</li>
+      <li>Deja nombre y WhatsApp. No necesita usuario ni contraseña.</li>
+      <li>Recibe un código para consultar o cancelar el turno.</li>
+      <li>Si el cobro online está activo, paga la seña; si no, ve los datos de cobro manual.</li>
+    </ol>
+
+    <h3>Leer la agenda</h3>
+    <table>
+      <thead>
+        <tr><th>Estado en la grilla</th><th>Significado</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="tag">Libre</span></td><td>Se puede reservar o bloquear.</td></tr>
+        <tr><td><span class="tag tag--amber">Reservado</span></td><td>Tiene un cliente. Puede tener seña pendiente o estar abonado.</td></tr>
+        <tr><td><span class="tag tag--red">Bloqueado</span></td><td>Horario fuera de circulación, sin cliente. Se usa para mantenimiento o reservas internas.</td></tr>
+        <tr><td><span class="tag tag--blue">—</span></td><td>Horario pasado. No se puede reservar.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Reservar desde el panel</h3>
+    <p>En <strong>Nuevo turno / bloqueo</strong> elegí cancha, horario, cliente, WhatsApp y nota. El botón <span class="ui">Reservar turno</span> crea la reserva con el precio vigente.</p>
+    <div class="callout callout--info">
+      <strong>Diferencia importante:</strong> las reservas cargadas desde el panel <strong>no generan seña online</strong>. Quedan como pago total en el club. Para registrar el cobro, usá <span class="ui">Marcar abonado</span>.
+    </div>
+
+    <h3>Bloquear un horario</h3>
+    <p>Usá <span class="ui">Bloquear</span> para mantenimiento, clase interna o cualquier uso que no sea una reserva de cliente. El horario deja de estar disponible en la página pública. Para volver a liberarlo, usá <span class="ui">Liberar</span>.</p>
+
+    <h3>Liberar o cancelar</h3>
+    <p>El botón <span class="ui">Liberar</span> de la grilla o <span class="ui">Cancelar</span> de la tabla cancela la reserva y libera el horario. Si la reserva tenía seña o saldo cobrado, el sistema avisa que corresponde devolución o acuerdo con el cliente: <strong>no reintegra dinero automáticamente</strong>.</p>
+
+    <h3>Totales del día</h3>
+    <table>
+      <thead>
+        <tr><th>Indicador</th><th>Qué suma</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Reservado del día</td><td>Precio de todos los turnos no cancelados de ese día.</td></tr>
+        <tr><td>Cobrado del día</td><td>Señas y saldos ya marcados como cobrados, más turnos manuales abonados.</td></tr>
+        <tr><td>Saldo en cancha</td><td>Lo que todavía falta cobrar en el club por los turnos del día.</td></tr>
+      </tbody>
+    </table>
+    <p>El botón <span class="ui">Avisar</span> abre WhatsApp con el mensaje de confirmación ya escrito para el cliente. Aparece en reservas confirmadas con teléfono cargado.</p>
+  </section>
+
+  <section class="chapter" id="cobros">
+    <span class="chapter-kicker">05 · Dinero</span>
+    <h2>Seña, saldo y cobros</h2>
+    <p class="lead">El sistema separa lo que se cobra al reservar de lo que se cobra en el club. Así podés saber cuánto entró y cuánto falta, sin confundir una seña con el total del turno.</p>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Con cobro online activo</h3>
+        <ul>
+          <li>El cliente paga una <strong>seña del 30%</strong> del precio (redondeada a centavos).</li>
+          <li>El horario queda <strong>retenido 15 minutos</strong>. Si no se acredita el pago, se libera solo.</li>
+          <li>Cuando Mercado Pago aprueba, el turno pasa a <strong>Reservado</strong> y la seña queda abonada.</li>
+          <li>El <strong>saldo restante (el 70%) se paga en el club</strong> y se registra desde la agenda.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Sin cobro online</h3>
+        <ul>
+          <li>El turno se reserva al instante, pero la seña queda <strong>pendiente</strong>.</li>
+          <li>El cliente ve el alias/CVU o el link de pago manual.</li>
+          <li>El personal marca la seña y después el saldo cuando los cobra.</li>
+          <li>Si el cliente no paga, el horario sigue reservado hasta que lo canceles.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Qué hace cada botón</h3>
+    <table>
+      <thead>
+        <tr><th>Botón</th><th>Cuándo aparece</th><th>Qué registra</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="ui">Confirmar seña</span></td><td>Turno con seña pendiente de pago online.</td><td>Confirma el turno y marca la seña como abonada. Usalo solo si el pago está acreditado.</td></tr>
+        <tr><td><span class="ui">Marcar seña abonada</span></td><td>Turno reservado con seña pendiente, normalmente cobro manual.</td><td>Marca la seña como cobrada. Después queda disponible el saldo.</td></tr>
+        <tr><td><span class="ui">Cobrar saldo</span></td><td>Seña ya abonada y saldo pendiente.</td><td>Registra el saldo cobrado en el club.</td></tr>
+        <tr><td><span class="ui">Marcar saldo pendiente</span></td><td>Saldo ya marcado como cobrado.</td><td>Revierte el saldo si se cargó por error.</td></tr>
+        <tr><td><span class="ui">Marcar seña pendiente</span></td><td>Seña marcada como abonada.</td><td>Revierte la seña si se cargó por error.</td></tr>
+        <tr><td><span class="ui">Marcar abonado</span></td><td>Reserva manual o turno sin seña.</td><td>Marca el total del turno como cobrado.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout--warning">
+      <strong>No marques pagos sin verificarlos.</strong> Los totales del día y el saldo pendiente se calculan con lo que registres. Si cobraste en efectivo, anotá la nota del turno o marcá el pago en el momento.
+    </div>
+
+    <h3>Devoluciones y cancelaciones</h3>
+    <p>Si cancelás un turno con seña o saldo cobrado, el sistema conserva el registro y muestra una advertencia. La devolución se gestiona aparte: en Mercado Pago si fue online, o en el club si fue efectivo. No hay un botón de reintegro automático.</p>
+
+    <h3>Pagos que llegan tarde</h3>
+    <p>Si un pago se aprueba después de que venció la retención, el horario puede haberse liberado. Si todavía está libre, el sistema puede restaurar el turno; si ya lo tomó otra persona o la reserva se canceló, el pago queda <strong>aprobado sin turno</strong>. En ese caso, revisá la agenda, coordiná con el cliente y gestioná la devolución o un nuevo horario.</p>
+  </section>
+
+  <section class="chapter" id="mercado-pago">
+    <span class="chapter-kicker">06 · Cobro online</span>
+    <h2>Mercado Pago: prueba y producción</h2>
+    <p class="lead">El cobro online usa Checkout Pro. El complejo necesita su propia cuenta de Mercado Pago y un <strong>access token del vendedor</strong>. El dinero se acredita en esa cuenta.</p>
+
+    <div class="callout callout--danger">
+      <strong>No confundas vendedor con comprador.</strong> El panel guarda únicamente el token del <strong>vendedor</strong>, que es la cuenta que cobra. El <strong>comprador de prueba</strong> se usa solo para iniciar sesión en Mercado Pago y pagar. Nunca cargues el usuario o la contraseña del comprador en el panel.
+    </div>
+
+    <h3>Activar el cobro real</h3>
+    <ol class="steps">
+      <li>Ingresá con la <strong>cuenta real del complejo</strong> en Mercado Pago Developers.</li>
+      <li>Entrá a tu aplicación → <strong>Credenciales</strong> → copiá el <strong>Access token de producción</strong>. Empieza con <span class="ui">APP_USR-</span>.</li>
+      <li>En el panel, andá a <span class="ui">Turnos</span> → <span class="ui">Precio y avisos</span>.</li>
+      <li>Pegá el token en <strong>Access token de Mercado Pago</strong>. No pegues un link de pago: si empieza con <span class="ui">https://</span>, el sistema lo rechaza.</li>
+      <li>Guardá los ajustes. Debe aparecer <span class="ui">Token cargado</span>.</li>
+      <li>Hacé una prueba real de bajo valor y, si corresponde, devolvela desde Mercado Pago.</li>
+    </ol>
+
+    <h3>El token no se muestra</h3>
+    <p>Por seguridad, el campo queda vacío aunque el token esté guardado. Si no escribís nada, se conserva. Si querés reemplazarlo, pegá uno nuevo. Si querés volver al cobro manual, marcá <span class="ui">Quitar el token y volver al cobro manual</span>.</p>
+    <p>El token se guarda cifrado. Si el sistema se reinstala o cambia su clave de seguridad, puede ser necesario volver a cargarlo.</p>
+
+    <h3>Probar sin cobrar dinero real</h3>
+    <p>Usá un <strong>token de vendedor de prueba</strong> y un <strong>comprador de prueba</strong>. Los tokens de prueba también pueden empezar con <span class="ui">APP_USR-</span>; lo importante es que pertenezcan a una cuenta de prueba.</p>
+    <ol class="steps">
+      <li>En Mercado Pago Developers → tu aplicación → <strong>Cuentas de prueba</strong>, elegí <strong>Comprador</strong> y copiá usuario y contraseña.</li>
+      <li>Abrí una ventana de incógnito e iniciá sesión con ese comprador. Si pide un código de 6 dígitos, está en la misma pantalla.</li>
+      <li>Volvé al link de pago del turno y completá con una tarjeta de prueba.</li>
+      <li>Si Mercado Pago muestra «cuenta de prueba», es normal: no se mueve dinero real.</li>
+    </ol>
+    <div class="card">
+      <h4>Tarjeta de prueba de ejemplo</h4>
+      <p><strong>Número:</strong> 5031 7557 3453 0604 · <strong>Vencimiento:</strong> 11/30 · <strong>CVV:</strong> 123<br>
+      <strong>Titular:</strong> APRO · <strong>Documento:</strong> 12345678 · <strong>Tipo:</strong> Mastercard</p>
+      <p class="small muted">También podés usar la Visa 4509 9535 6623 3704 con los mismos datos. Usá las tarjetas de prueba que muestre Mercado Pago si cambian.</p>
+    </div>
+
+    <div class="callout callout--warning">
+      <strong>El botón Pagar queda gris:</strong> generalmente estás logueado con la cuenta vendedora, estás usando una tarjeta real en un checkout de prueba o falta completar nombre, documento, cuotas o términos. Cerrá sesión, abrí una ventana incógnita y pagá con el comprador de prueba.
+    </div>
+
+    <h3>Sin token: cobro manual de respaldo</h3>
+    <p>Si el complejo no configuró Mercado Pago, la reserva pública sigue funcionando. El cliente ve el alias/CVU, el titular y el link de pago si los cargaste. Después el personal marca la seña y el saldo desde la agenda.</p>
+    <div class="callout callout--info">
+      <strong>Link de pago:</strong> es un dato de respaldo para el cliente, no es el access token. No lo pegues en el campo del token.
+    </div>
+  </section>
+
+  <section class="chapter" id="torneos">
+    <span class="chapter-kicker">07 · Competencias</span>
+    <h2>Torneos: creación y estados</h2>
+    <p class="lead">Cada torneo pertenece a un complejo y tiene su propio fixture. Podés administrar varios torneos y volver al último que elegiste.</p>
+
+    <h3>Crear un torneo</h3>
+    <p>Desde <span class="ui">Tus torneos</span> → <span class="ui">Crear torneo</span>. Completá:</p>
+    <table>
+      <thead>
+        <tr><th>Campo</th><th>Qué tener en cuenta</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Complejo</td><td>Si tenés uno solo, se elige solo. El torneo queda dentro de ese complejo.</td></tr>
+        <tr><td>Nombre</td><td>Es el nombre público del torneo.</td></tr>
+        <tr><td>Identificador (slug)</td><td>Parte de la dirección web. Si lo dejás vacío, se genera desde el nombre. Después de crear, no se edita.</td></tr>
+        <tr><td>Categoría</td><td>Principiante, Octava a Primera. Se usa para filtrar sugerencias de jugadores.</td></tr>
+        <tr><td>Tipo de torneo</td><td>Zonas + eliminación directa, o solo round robin.</td></tr>
+        <tr><td>Inicio y fin</td><td>La fecha de inicio es obligatoria; la de fin es opcional.</td></tr>
+        <tr><td>Sets al mejor de</td><td>1, 2, 3 o 5. El valor por defecto al crear es 3; ajustalo según el reglamento.</td></tr>
+        <tr><td>Duplas por zona</td><td>Entre 2 y 6.</td></tr>
+        <tr><td>Clasificados por zona</td><td>Cuántas parejas pasan a la llave. No puede superar las duplas por zona.</td></tr>
+        <tr><td>Estado</td><td>Borrador, Inscripciones, En curso o Finalizado.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Estados del torneo</h3>
+    <table>
+      <thead>
+        <tr><th>Estado</th><th>Uso</th><th>Qué ve el público</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="tag">Borrador</span></td><td>Armado interno, todavía no se publica.</td><td>No aparece en la lista pública.</td></tr>
+        <tr><td><span class="tag tag--amber">Inscripciones</span></td><td>Etapa para sumar parejas. Es la única en la que puede estar abierta la autoinscripción.</td><td>Aparece en la lista y puede mostrar «Inscripciones abiertas».</td></tr>
+        <tr><td><span class="tag tag--blue">En curso</span></td><td>El torneo ya comenzó; se juegan zonas y llaves.</td><td>Aparece con el fixture actualizado; la autoinscripción se cierra.</td></tr>
+        <tr><td><span class="tag">Finalizado</span></td><td>Torneo terminado.</td><td>Queda visible con resultados y campeón.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>Cambio automático:</strong> al generar las zonas, si el torneo estaba en Borrador o Inscripciones, pasa a <strong>En curso</strong>. Eso también cierra la autoinscripción.
+    </div>
+
+    <h3>Editar o eliminar</h3>
+    <p>En <span class="ui">Configuración</span> del torneo podés cambiar nombre, fechas, formato, sets, zonas y estado. El slug no se modifica. <strong>Eliminar torneo</strong> borra zonas, partidos, resultados y llaves, pero conserva parejas y jugadores para reutilizarlos. No se puede deshacer.</p>
+  </section>
+
+  <section class="chapter" id="parejas">
+    <span class="chapter-kicker">08 · Participantes</span>
+    <h2>Parejas y jugadores</h2>
+    <p class="lead">Las parejas se inscriben en un torneo. Los jugadores quedan en una base compartida y se reutilizan en cualquier otro torneo.</p>
+
+    <h3>Agregar una pareja</h3>
+    <ol class="steps">
+      <li>Entrá a <span class="ui">Parejas</span> → <span class="ui">Agregar pareja</span>.</li>
+      <li>Escribí apellido y nombre de cada jugador. Mientras escribís aparecen las fichas guardadas; elegilas para no duplicar datos.</li>
+      <li>Si el jugador no existe, completá género y nivel en <strong>Datos del jugador nuevo</strong>. Se crea y queda guardado.</li>
+      <li>El nombre de la dupla se arma solo con los apellidos; podés cambiarlo o dejarlo vacío.</li>
+      <li>Guardá. La pareja queda inscripta y disponible para zonas.</li>
+    </ol>
+    <div class="callout">
+      <strong>Regla:</strong> un jugador no puede estar en dos parejas del mismo torneo. Sí puede jugar otros torneos. El sistema valida esto en la pantalla, en el servidor y en la base.
+    </div>
+    <p>Las sugerencias se filtran por la categoría del torneo. Si necesitás ver jugadores de otras categorías, usá <span class="ui">Ver todas las categorías</span>.</p>
+
+    <h3>Jugadores</h3>
+    <p>La sección <span class="ui">Jugadores</span> permite buscar por nombre, estado o categoría, agregar fichas, editar datos de contacto, activar/desactivar y unificar duplicados.</p>
+    <table>
+      <thead>
+        <tr><th>Acción</th><th>Cuándo usarla</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Editar</td><td>Corregir nombre, género, nivel, teléfono o email.</td></tr>
+        <tr><td>Desactivar</td><td>El jugador ya no participa, pero querés conservar su historial.</td></tr>
+        <tr><td>Eliminar ficha</td><td>Solo si no está en ningún torneo ni tiene partidos. Si compitió, desactivalo.</td></tr>
+        <tr><td>Unificar ficha duplicada</td><td>La misma persona quedó cargada dos veces. Se conserva una ficha y se trasladan duplas, inscripciones, zonas y partidos.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Dar de baja una pareja</h3>
+    <p>Se puede eliminar una pareja si no tiene partidos con resultado ni la llave tiene resultados cargados. Si ya jugó, primero corregí o eliminá esos resultados. Al darla de baja, los jugadores quedan disponibles para otros torneos.</p>
+  </section>
+
+  <section class="chapter" id="autoinscripcion">
+    <span class="chapter-kicker">09 · Inscripción online</span>
+    <h2>Autoinscripción de parejas</h2>
+    <p class="lead">La autoinscripción permite que una pareja se anote sola desde la página pública, usando un código que le pasa el complejo. La inscripción queda pendiente hasta que la confirmes.</p>
+
+    <div class="callout callout--info">
+      <strong>Si no ves «Anotá tu pareja» en la página pública</strong>, revisá estas tres condiciones: el torneo debe estar en <strong>Inscripciones</strong>, la autoinscripción debe estar <strong>activada</strong> y debe existir un <strong>código</strong>. Las tres se administran desde <span class="ui">Parejas</span> → <span class="ui">Invitar pareja con código</span>.
+    </div>
+
+    <h3>Activar</h3>
+    <ol class="steps">
+      <li>Entrá al torneo → <span class="ui">Parejas</span>.</li>
+      <li>Bajá hasta <strong>Invitar pareja con código</strong>.</li>
+      <li>Tocá <span class="ui">Activar autoinscripción</span>. Se genera un código.</li>
+      <li>Compartí el código o el link con los jugadores. El link ya lleva el código adentro.</li>
+    </ol>
+    <p>El panel ofrece <span class="ui">Copiar código</span>, <span class="ui">Copiar link</span>, <span class="ui">Compartir por WhatsApp</span> y <span class="ui">Enviar solo el código</span>.</p>
+
+    <h3>Confirmar o rechazar</h3>
+    <p>Las parejas que se anotan quedan en <strong>Solicitudes pendientes</strong>. Hasta que las confirmes, no cuentan para zonas ni partidos. Usá <span class="ui">Confirmar</span> para que entren al torneo o <span class="ui">Rechazar</span> para dejarlas fuera.</p>
+
+    <h3>Administrar el código</h3>
+    <ul>
+      <li><strong>Regenerar código:</strong> invalida el anterior. Útil si se filtró o querés cerrar el acceso con ese link.</li>
+      <li><strong>Desactivar:</strong> nadie más puede anotarse, pero el código queda guardado por si lo reactivás.</li>
+      <li><strong>Al pasar a En curso:</strong> la autoinscripción se cierra automáticamente.</li>
+    </ul>
+    <div class="callout callout--warning">
+      <strong>El código es una invitación.</strong> No lo publiques en redes si querés controlar quién se anota. Compartilo solo con las parejas que deben participar.
+    </div>
+  </section>
+
+  <section class="chapter" id="zonas">
+    <span class="chapter-kicker">10 · Fase de grupos</span>
+    <h2>Zonas y partidos</h2>
+    <p class="lead">Las zonas son los grupos de round robin. Cada pareja juega contra todas las de su zona. Después, las mejores clasifican a la llave.</p>
+
+    <h3>Generar zonas</h3>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Automáticamente</h3>
+        <p>El sistema distribuye las parejas sin zona en grupos del tamaño configurado, con un sorteo reproducible y auditado. Si ya hay zonas, completa los lugares libres.</p>
+      </div>
+      <div class="card">
+        <h3>A mano</h3>
+        <p>Elegís a qué zona va cada pareja. Cada zona necesita entre 2 y el máximo configurado. Las zonas vacías se descartan y las parejas en «Sin zona» quedan libres.</p>
+      </div>
+    </div>
+    <p>Al generar zonas se crean automáticamente los partidos de round robin. También podés agregar un partido de zona a mano desde <span class="ui">Partidos</span>; solo se elimina si todavía no tiene resultado.</p>
+
+    <h3>Reglas para modificar</h3>
+    <ul>
+      <li>Una pareja no puede estar en dos zonas del mismo torneo.</li>
+      <li>No se puede mover ni quitar una pareja si tiene partidos con resultado.</li>
+      <li>Si la llave ya tiene resultados, no se puede cambiar la composición de las zonas.</li>
+      <li>Las parejas con resultados cargados quedan bloqueadas para evitar inconsistencias.</li>
+    </ul>
+  </section>
+
+  <section class="chapter" id="resultados">
+    <span class="chapter-kicker">11 · Resultados</span>
+    <h2>Resultados y clasificación</h2>
+    <p class="lead">Los resultados se cargan desde <span class="ui">Resultados</span>. El marcador siempre se escribe con la primera pareja primero; el sistema valida el reglamento del torneo.</p>
+
+    <h3>Cómo escribir el marcador</h3>
+    <ul>
+      <li>Formato: <span class="ui">6-4 4-6 11-9</span>. El super tie-break va al final; también se acepta entre corchetes: <span class="ui">[11-9]</span>.</li>
+      <li>Sets válidos: 6-0 a 6-4, 7-5 y 7-6. El super tie-break se juega a 11 con diferencia de 2.</li>
+      <li>El ganador se deduce del marcador. Si elegís un ganador a mano, el sistema acomoda el marcador si vino espejado.</li>
+      <li><strong>Walkover:</strong> marcá la casilla, elegí ganador y escribí el motivo. No se inventan sets.</li>
+    </ul>
+
+    <h3>Corregir un resultado</h3>
+    <p>En <strong>Últimos resultados</strong> abrí <span class="ui">Corregir resultado</span>. Si hay partidos dependientes con resultado, el sistema bloquea la corrección y te indica qué revisar. Corregí primero esos partidos.</p>
+
+    <h3>Clasificación</h3>
+    <p>La clasificación se ordena por puntos, diferencia de sets y diferencia de games. Si persiste el empate, se hace un sorteo reproducible y auditado; nunca se usa el resultado entre ambos.</p>
+    <table>
+      <thead>
+        <tr><th>Estado</th><th>Qué significa</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="tag tag--amber">Provisional</span></td><td>Todavía faltan partidos de zona. Las posiciones pueden cambiar.</td></tr>
+        <tr><td><span class="tag">Oficial</span></td><td>Todos los partidos de zona están completos y válidos. Se usan para sembrar la llave.</td></tr>
+      </tbody>
+    </table>
+    <p>Las primeras posiciones que clasifican según la configuración quedan resaltadas. Abajo se muestra el orden de clasificados a la llave.</p>
+  </section>
+
+  <section class="chapter" id="llaves">
+    <span class="chapter-kicker">12 · Eliminación directa</span>
+    <h2>Llaves eliminatorias</h2>
+    <p class="lead">Cuando la fase de zonas termina, las mejores clasificadas pasan a una llave de eliminación directa. El ganador de cada cruce avanza automáticamente.</p>
+
+    <h3>Generación automática</h3>
+    <ul>
+      <li>Se genera al cerrar la última zona válida o cuando uses <span class="ui">Generar automáticamente</span>.</li>
+      <li>Las mejores clasificadas reciben descansos (byes) cuando el cuadro no es potencia de dos.</li>
+      <li>Se evita enfrentar a dos parejas de la misma zona en primera ronda cuando hay alternativa.</li>
+      <li>Admite hasta 64 parejas. No hay partido por el tercer puesto.</li>
+    </ul>
+
+    <h3>Armar cruces a mano</h3>
+    <p>En <span class="ui">Llaves</span> podés usar <span class="ui">Armar cruces a mano</span>. Elegís los enfrentamientos de primera ronda entre las clasificadas; dejar un lugar vacío genera un descanso. Las rondas siguientes se completan solas.</p>
+
+    <h3>Cuadro gráfico y lista</h3>
+    <p>La vista <strong>Cuadro gráfico</strong> muestra todas las rondas en columnas unidas por líneas. La vista <strong>Lista de partidos</strong> es una alternativa más compacta. En ambas, el ganador queda marcado y se ve el marcador.</p>
+
+    <div class="callout callout--warning">
+      <strong>No se puede regenerar una llave con resultados.</strong> Si necesitás corregir, primero corregí los resultados dependientes. La llave armada a mano se conserva mientras la clasificación no cambie y no haya resultados cargados.
+    </div>
+  </section>
+
+  <section class="chapter" id="usuarios">
+    <span class="chapter-kicker">13 · Accesos</span>
+    <h2>Usuarios y accesos</h2>
+    <p class="lead">Cada persona debe tener su propia cuenta. No compartas un usuario entre empleados: si alguien deja el complejo, suspendé su cuenta y conservá el historial.</p>
+
+    <h3>Agregar un usuario</h3>
+    <ol class="steps">
+      <li>Andá a <span class="ui">Configuración general</span> → <span class="ui">Agregar usuario</span>.</li>
+      <li>Completá usuario, nombre, apellido, email y una contraseña temporal de al menos 8 caracteres.</li>
+      <li>Dejá activo <strong>Acceso al panel</strong> si debe gestionar torneos y turnos.</li>
+      <li>Asignale uno o más complejos. Un usuario del panel debe quedar siempre con al menos un complejo.</li>
+      <li>Si querés, marcá <strong>Enviar los datos por email</strong>. Si el envío de email no está configurado, copiá la contraseña y entregala personalmente.</li>
+    </ol>
+
+    <h3>Suspender, reactivar o eliminar</h3>
+    <table>
+      <thead>
+        <tr><th>Acción</th><th>Efecto</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Suspender</td><td>No puede ingresar, pero conserva todos sus datos. Ideal para licencias impagas o personal que deja el club.</td></tr>
+        <tr><td>Reactivar</td><td>Vuelve a ingresar normalmente con los mismos datos.</td></tr>
+        <tr><td>Eliminar definitivamente</td><td>Borra la cuenta y los complejos de los que sea único responsable, con sus torneos, canchas y reservas. Los complejos compartidos no se borran: solo se desvincula al usuario.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout--danger">
+      <strong>Eliminar es definitivo.</strong> Antes de borrar un usuario o un complejo, revisá el resumen de lo que se va a eliminar. Los jugadores y las duplas de la base compartida se conservan.
+    </div>
+
+    <h3>Invitaciones con Google</h3>
+    <p>El administrador general puede cargar el email de Google de un futuro dueño o de personal. Cuando esa persona ingrese con <span class="ui">Ingresar con Google</span>, la cuenta se crea sola. La invitación puede incluir un complejo existente o dejar que la persona cree el suyo.</p>
+
+    <h3>Solicitudes de registro</h3>
+    <p>Quien no usa Google puede pedir una cuenta desde <span class="ui">Registrarse</span>. La solicitud llega con los datos de la persona y del complejo. El administrador general la revisa y usa <span class="ui">Crear usuario</span>: el formulario ya viene precargado y puede crear el complejo en el mismo paso.</p>
+  </section>
+
+  <section class="chapter" id="whatsapp">
+    <span class="chapter-kicker">14 · Comunicación</span>
+    <h2>Avisos por WhatsApp</h2>
+    <p class="lead">El sistema puede avisar al complejo cuando entra una reserva y facilitar el contacto con el cliente.</p>
+    <ul>
+      <li><strong>WhatsApp del complejo:</strong> cargalo en <span class="ui">Precio y avisos</span> con código de país y solo números.</li>
+      <li><strong>CallMeBot API key:</strong> opcional. Se obtiene una vez desde el WhatsApp del complejo y permite el aviso automático.</li>
+      <li><strong>Botón Avisar:</strong> en la agenda, abre WhatsApp con el mensaje de confirmación ya escrito para el cliente.</li>
+      <li><strong>Confirmar por WhatsApp:</strong> con el número cargado, la confirmación del cliente también muestra este botón para que avise al complejo.</li>
+      <li><strong>Aviso automático:</strong> el complejo recibe un mensaje con los datos de la reserva nueva. En un pago online, se envía cuando Mercado Pago aprueba la seña.</li>
+    </ul>
+    <div class="callout callout--info">
+      <strong>Si WhatsApp falla, la reserva no se pierde.</strong> El aviso es un servicio externo. Si CallMeBot no responde, el turno igual queda registrado; revisá la agenda o contactá al cliente manualmente.
+    </div>
+  </section>
+
+  <section class="chapter" id="tareas">
+    <span class="chapter-kicker">15 · Recetas</span>
+    <h2>Tareas frecuentes</h2>
+
+    <h3>Abrir las inscripciones de un torneo</h3>
+    <ol>
+      <li>Poné el torneo en estado <strong>Inscripciones</strong>.</li>
+      <li>Entrá a <strong>Parejas</strong> → <strong>Activar autoinscripción</strong>.</li>
+      <li>Copiá el link y compartilo. Si no querés autoinscripción, cargá las parejas a mano.</li>
+    </ol>
+
+    <h3>Agregar una pareja después de generar las zonas</h3>
+    <p>Si todavía no hay resultados, podés agregar la pareja y asignarla a una zona con lugar. Si la zona ya tiene partidos con resultado, corregí primero esos partidos. Si la llave ya tiene resultados, no se puede modificar la composición.</p>
+
+    <h3>Comenzar el torneo</h3>
+    <p>Generá las zonas. El torneo pasa a <strong>En curso</strong> y la autoinscripción se cierra. A partir de ahí, cargá los resultados de zona.</p>
+
+    <h3>Cerrar un día por lluvia o feriado</h3>
+    <p>En <span class="ui">Horarios y feriados</span> → <strong>Feriados y fechas especiales</strong>, cargá la fecha, marcá <strong>Cerrado todo el día</strong> y guardá. La página pública deja de ofrecer turnos para esa fecha.</p>
+
+    <h3>Cobrar la seña y el saldo</h3>
+    <ol>
+      <li>Verificá el pago en Mercado Pago o en el comprobante del cliente.</li>
+      <li>En la agenda, usá <span class="ui">Confirmar seña</span> o <span class="ui">Marcar seña abonada</span>.</li>
+      <li>Cuando el cliente pague el resto en el club, usá <span class="ui">Cobrar saldo</span>.</li>
+    </ol>
+
+    <h3>Cambiar el precio de los turnos</h3>
+    <p>Entrá a <span class="ui">Precio y avisos</span>, actualizá el precio y guardá. Las reservas ya creadas conservan el precio anterior; el nuevo precio se aplica a las próximas reservas.</p>
+
+    <h3>Dar acceso a un empleado</h3>
+    <p>Creá un usuario, asignale el complejo y dejá activo <strong>Acceso al panel</strong>. No le des el usuario de otra persona. Cuando deje el club, suspendelo.</p>
+
+    <h3>Cancelar un turno con pago</h3>
+    <p>Cancelá desde la agenda y coordiná la devolución. Si el pago fue online, gestioná el reintegro en Mercado Pago. Si fue en efectivo, registrá el acuerdo en la nota del turno.</p>
+
+    <h3>Corregir un resultado</h3>
+    <p>Entrá a <strong>Resultados</strong> → <strong>Últimos resultados</strong> → <strong>Corregir resultado</strong>. Si el sistema lo bloquea, revisá los partidos dependientes de la llave y corregilos en orden.</p>
+  </section>
+
+  <section class="chapter" id="problemas">
+    <span class="chapter-kicker">16 · Ayuda rápida</span>
+    <h2>Problemas frecuentes</h2>
+    <table>
+      <thead>
+        <tr><th>Síntoma</th><th>Causa probable</th><th>Qué hacer</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>No aparece «Anotá tu pareja» en el torneo.</td>
+          <td>El torneo no está en Inscripciones, la autoinscripción está desactivada o no hay código.</td>
+          <td>Revisá el estado y activá la autoinscripción desde Parejas. Las tres condiciones deben cumplirse.</td>
+        </tr>
+        <tr>
+          <td>El torneo no aparece en la página pública.</td>
+          <td>Está en Borrador.</td>
+          <td>Cambialo a Inscripciones, En curso o Finalizado.</td>
+        </tr>
+        <tr>
+          <td>No hay turnos disponibles en una fecha.</td>
+          <td>El día está cerrado, no hay canchas activas, no hay horario configurado o la fecha está fuera de la ventana.</td>
+          <td>Revisá Horarios y feriados, canchas activas y que la fecha no sea pasada.</td>
+        </tr>
+        <tr>
+          <td>El botón Pagar de Mercado Pago está gris.</td>
+          <td>Sesión iniciada como vendedor, checkout de prueba con tarjeta real o formulario incompleto.</td>
+          <td>Usá una ventana incógnita con el comprador de prueba y completá todos los datos.</td>
+        </tr>
+        <tr>
+          <td>Mercado Pago dice «cuenta de prueba».</td>
+          <td>El token cargado es de una cuenta de prueba.</td>
+          <td>Es normal. No se mueve dinero real. Para cobrar de verdad, cargá el token de producción de la cuenta real.</td>
+        </tr>
+        <tr>
+          <td>El pago se aprobó pero el turno sigue pendiente.</td>
+          <td>La confirmación puede demorar unos segundos o la retención venció.</td>
+          <td>Recargá la agenda. Si sigue igual, revisá el pago en Mercado Pago y contactá al soporte con el código del turno.</td>
+        </tr>
+        <tr>
+          <td>El turno desapareció o se liberó.</td>
+          <td>La seña no se acreditó dentro de la retención de 15 minutos.</td>
+          <td>El horario se liberó automáticamente. El cliente debe reservar de nuevo.</td>
+        </tr>
+        <tr>
+          <td>No llega el aviso por WhatsApp.</td>
+          <td>CallMeBot no responde, la API key o el número están mal.</td>
+          <td>Revisá número y clave. La reserva no se pierde; contactá al cliente manualmente.</td>
+        </tr>
+        <tr>
+          <td>No puedo mover o quitar una pareja.</td>
+          <td>Tiene partidos con resultado o la llave ya tiene resultados.</td>
+          <td>Corregí primero los resultados dependientes. Si no corresponde, dejá la pareja y generá una nueva zona cuando sea posible.</td>
+        </tr>
+        <tr>
+          <td>No puedo eliminar un jugador.</td>
+          <td>Está en un torneo o tiene partidos cargados.</td>
+          <td>Desactivalo para conservar el historial o unificá la ficha si es un duplicado.</td>
+        </tr>
+        <tr>
+          <td>No veo el token de Mercado Pago.</td>
+          <td>Es intencional: el token no se muestra por seguridad.</td>
+          <td>Mirá el estado «Token cargado». Si necesitás reemplazarlo, pegá uno nuevo; si no, dejalo vacío.</td>
+        </tr>
+        <tr>
+          <td>Cambié el precio y una reserva mantiene el anterior.</td>
+          <td>El precio se guarda al crear la reserva.</td>
+          <td>Es correcto. El nuevo precio se aplica a las próximas reservas.</td>
+        </tr>
+        <tr>
+          <td>La página se ve con estilos viejos.</td>
+          <td>Caché del navegador.</td>
+          <td>Recargá con Ctrl+F5 o abrí una ventana incógnita.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout--warning">
+      <strong>Si el problema no está en la lista:</strong> anotá complejo, fecha, código de turno o nombre del torneo, hora del error y el mensaje exacto. No compartas el access token ni contraseñas. Pasá esos datos al administrador general o al soporte.
+    </div>
+  </section>
+
+  <section class="chapter" id="buenas-practicas">
+    <span class="chapter-kicker">17 · Recomendaciones</span>
+    <h2>Buenas prácticas</h2>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Todos los días</h3>
+        <ul class="checklist">
+          <li>Revisá la agenda del día y los turnos con seña pendiente.</li>
+          <li>Verificá los pagos antes de marcarlos.</li>
+          <li>Cancelá o liberá los turnos que no se van a usar.</li>
+          <li>Mirá los avisos de WhatsApp y contactá a los clientes si hace falta.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Todas las semanas</h3>
+        <ul class="checklist">
+          <li>Revisá horarios, feriados y precios.</li>
+          <li>Controlá que las canchas activas sean las correctas.</li>
+          <li>Revisá inscripciones y solicitudes pendientes de torneos.</li>
+          <li>Suspendé cuentas de personal que ya no trabaja en el club.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Seguridad</h3>
+    <ul>
+      <li>Usá una cuenta individual por persona. No compartas usuarios ni contraseñas.</li>
+      <li>No compartas el access token de Mercado Pago. El panel no lo muestra y no deberías pegarlo en chats.</li>
+      <li>Si sospechás que una cuenta o un token se filtró, cambiá la contraseña o reemplazá el token.</li>
+      <li>Antes de eliminar un complejo, un torneo o un usuario, leé el resumen de lo que se borra. Esas acciones no se pueden deshacer.</li>
+      <li>Protegé los datos de los clientes: nombre, teléfono y pagos solo deben verlos las personas autorizadas.</li>
+    </ul>
+
+    <h3>Antes de cobrar de verdad</h3>
+    <ul class="checklist">
+      <li>Probá el flujo completo con token y comprador de prueba.</li>
+      <li>Revisá que el precio y la seña del 30% sean correctos.</li>
+      <li>Verificá que el WhatsApp del complejo reciba los avisos.</li>
+      <li>Hacé una compra real de bajo valor y comprobá la acreditación y el reintegro.</li>
+      <li>Recién después cargá el token de producción para el público.</li>
+    </ul>
+  </section>
+
+  <section class="chapter" id="glosario">
+    <span class="chapter-kicker">18 · Referencia</span>
+    <h2>Glosario</h2>
+    <table>
+      <thead>
+        <tr><th>Término</th><th>Significado</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Complejo</td><td>El club o predio. Agrupa canchas, horarios, reservas y torneos.</td></tr>
+        <tr><td>Cancha</td><td>Espacio reservable. Puede estar activa o inactiva.</td></tr>
+        <tr><td>Turno</td><td>Franja horaria reservada por un cliente o bloqueada por el complejo.</td></tr>
+        <tr><td>Seña</td><td>Pago parcial al reservar. Por defecto, 30% del precio.</td></tr>
+        <tr><td>Saldo</td><td>Parte del precio que se paga en el club.</td></tr>
+        <tr><td>Retención</td><td>Tiempo en que el horario queda guardado mientras el cliente paga. Por defecto, 15 minutos.</td></tr>
+        <tr><td>Access token</td><td>Clave privada de Mercado Pago que permite cobrar. No es un link de pago.</td></tr>
+        <tr><td>Vendedor</td><td>Cuenta de Mercado Pago que recibe el dinero. Su token va en el panel.</td></tr>
+        <tr><td>Comprador de prueba</td><td>Cuenta de Mercado Pago usada solo para simular un pago. No se carga en el panel.</td></tr>
+        <tr><td>Autoinscripción</td><td>Formulario público para que una pareja se anote con un código del torneo.</td></tr>
+        <tr><td>Zona</td><td>Grupo de round robin. Cada pareja juega contra las demás de su zona.</td></tr>
+        <tr><td>Llave</td><td>Cuadro de eliminación directa. El ganador avanza de ronda.</td></tr>
+        <tr><td>Bye</td><td>Descanso en una llave cuando no hay suficientes parejas para completar el cuadro.</td></tr>
+        <tr><td>Walkover</td><td>Partido ganado por ausencia o retiro, sin sets jugados.</td></tr>
+        <tr><td>Clasificación</td><td>Tabla de posiciones de cada zona. Será oficial cuando estén todos los resultados.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="footer-note">
+      Manual del administrador de canchas · Pádel Server · Versión 1.0 · Octubre 2026<br>
+      Documento de uso interno del complejo. Las pantallas y los nombres de botones pueden variar levemente según la versión.
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

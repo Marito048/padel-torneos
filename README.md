@@ -112,6 +112,22 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
   cuando las entrega la administración, el panel recuerda cambiarlas al ingresar y la ficha
   del usuario permite enviarlas por email junto con el nombre de usuario.
 
+## Manual para administradores de canchas
+
+Guía práctica para responsables y personal de los complejos: turnos, cobros de seña y saldo,
+Mercado Pago, torneos, usuarios y avisos por WhatsApp.
+
+- [Manual en PDF](docs/manual-administradores.pdf)
+- [Versión HTML imprimible](docs/manual-administradores.html)
+
+El PDF se genera desde el HTML con Chrome:
+
+```bash
+google-chrome --headless=new --no-pdf-header-footer \
+  --print-to-pdf=docs/manual-administradores.pdf \
+  file://$PWD/docs/manual-administradores.html
+```
+
 ## Formato de torneo (dominio)
 
 - Zonas (grupos) configurables (por defecto 3 duplas; el panel permite 2..N).
