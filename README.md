@@ -151,23 +151,48 @@ resultados con cruces en espera, correcciones, aislamiento por complejo y turnos
 
 Cambiar `.env` (DEBUG=False, ALLOWED_HOSTS, etc.), apuntar DNS a la IP pública, abrir puertos 80/443.
 
-**Con ngrok** (túnel sin abrir puertos): `ngrok http 80` (o `ngrok http 8000` directo a la app).
-Recomendado usar el dominio estático gratuito de ngrok para que la URL no cambie. En modo dev
-`ALLOWED_HOSTS=["*"]` deja entrar por el dominio de ngrok y, al ser mismo origen, los formularios
-funcionan sin configuración extra.
+**Con Tailscale Funnel** (túnel HTTPS sin abrir puertos; es el que está en uso):
+
+```bash
+# En el LXC (Tailscale ya está instalado y logueado)
+sudo tailscale set --hostname padel-server
+sudo tailscale funnel --bg 8080
+tailscale funnel status
+```
+
+La primera vez, `tailscale funnel` imprime un enlace de `login.tailscale.com` para habilitar
+Funnel en el tailnet (una sola vez; también se puede hacer desde la consola de Tailscale). Deja
+el sitio en `https://padel-server.tail2e85f1.ts.net` proxeado a `127.0.0.1:8080`. Para apagarlo:
+`sudo tailscale funnel --https=443 off` (o `tailscale funnel reset`). La URL no cambia entre
+reinicios y no muestra la pantalla «Visit Site» de ngrok. Requiere que el LXC/Proxmox estén
+encendidos y con Internet; Funnel está en beta y tiene límites de ancho de banda.
+
+Agregar el host en `.env` y reiniciar:
+
+```bash
+ALLOWED_HOSTS=...,padel-server.tail2e85f1.ts.net
+CSRF_TRUSTED_ORIGINS=...,https://padel-server.tail2e85f1.ts.net
+```
+
+**Alternativa con ngrok** (túnel sin abrir puertos): `ngrok http 80` (o `ngrok http 8000`
+directo a la app). Recomendado usar el dominio estático gratuito de ngrok para que la URL no
+cambie. En modo dev `ALLOWED_HOSTS=["*"]` deja entrar por el dominio de ngrok y, al ser mismo
+origen, los formularios funcionan sin configuración extra. La versión free muestra una pantalla
+intermedia «Visit Site» la primera vez.
 
 Para Google OAuth:
 1. En Google Cloud Console → APIs y servicios → Credenciales → «Crear ID de cliente OAuth»
-   (tipo Aplicación web). Origen autorizado: `https://<tu-dominio>` (el de ngrok o el propio).
-   URI de redirección: `https://<tu-dominio>/cuentas/google/login/callback/`.
+   (tipo Aplicación web). Origen autorizado: `https://padel-server.tail2e85f1.ts.net`
+   (o el dominio público que uses). URI de redirección:
+   `https://padel-server.tail2e85f1.ts.net/cuentas/google/login/callback/`.
 2. Cargar `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en `.env` y reiniciar (`docker compose up -d`).
    Los campos ya están reservados al final de `.env`.
 3. El botón "Ingresar con Google" aparece solo cuando ambas credenciales están cargadas.
    Entran los usuarios creados a mano (email coincidente o vinculación desde el panel) y los
    invitados: el administrador general carga el email en Configuración general → Invitaciones
    y la cuenta se crea al ingresar con Google. El registro abierto queda deshabilitado.
-4. Si la URL de ngrok cambia, actualizá el URI de redirección en Google Cloud Console
-   (con el dominio estático de ngrok esto no pasa).
+4. Si cambiás de túnel o dominio (ngrok, Tailscale Funnel, dominio propio), actualizá el origen
+   y el URI de redirección en Google Cloud Console.
 
 ## Email saliente (opcional)
 
@@ -212,7 +237,8 @@ Proxmox, así que corre nativo con el Postgres 17 del sistema, un virtualenv (`.
 bajo systemd.
 
 - URL en la red local: `http://192.168.0.200:8080` (el puerto 80 lo usa el nginx del LXC, que no
-  se toca). También entra por Tailscale si se usa el IP del tailnet.
+  se toca). Expuesto a Internet con Tailscale Funnel en `https://padel-server.tail2e85f1.ts.net`
+  (ver «Producción»).
 - Servicio: `sudo systemctl status|restart|stop padel-torneos` (habilitado al boot).
 - Código: `/home/padel/padel-torneos/app`; venv en `/home/padel/padel-torneos/.venv`.
 - Base de datos: `padel_torneos` en el Postgres del sistema (rol `padel_torneos`; la conexión
@@ -229,9 +255,10 @@ bajo systemd.
   `backups/padel_backup_20261016_003339_handoff_lxc.sql` (3 usuarios, 2 torneos, 106 jugadores,
   12 parejas). Desde ese momento cada entorno tiene su propia base: lo que se cargue en uno
   **no** aparece en el otro.
-- Para exponer el LXC con ngrok: instalar ngrok ahí y correr `ngrok http 8080`. Quedó configurado
+- **Alternativa con ngrok**: instalar ngrok ahí y correr `ngrok http 8080`. Quedó configurado
   con el dominio fijo `https://brunch-unfitted-guacamole.ngrok-free.dev` (los formularios funcionan
-  porque el origen coincide con el host).
+  porque el origen coincide con el host). La opción activa es Tailscale Funnel, sin pantalla
+  intermedia.
 
 ## Railway
 
