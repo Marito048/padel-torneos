@@ -463,6 +463,9 @@ class PaymentAndWhatsAppTests(TurnosFixtureMixin, TestCase):
             {"complejo": self.complex.slug, "fecha": self.day.isoformat(), "cancha": self.court.pk, "hora": "09:00"},
         )
         self.assertContains(response, "Precio del turno: <strong>$6000")
+        self.assertContains(response, "Seña: <strong>$1800")
+        self.assertContains(response, "Saldo en el club: $4200")
+        self.assertContains(response, "Reservar con seña pendiente")
 
     def test_confirmation_shows_whatsapp_button(self):
         self.complex.whatsapp_phone = "221 555 1234"
@@ -675,6 +678,8 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         payload = args[1]
         self.assertEqual(payload["external_reference"], booking.code)
         self.assertEqual(payload["items"][0]["unit_price"], 2400.0)
+        self.assertTrue(payload["expires"])
+        self.assertLess(payload["expiration_date_from"], payload["expiration_date_to"])
         self.assertTrue(payload["notification_url"].endswith(f"/turnos/pago/mercadopago/{self.complex.slug}/"))
         self.assertTrue(payload["back_urls"]["success"].endswith(f"/turnos/{booking.code}/pago/retorno/"))
         self.assertEqual(payload["payment_methods"]["excluded_payment_types"], [{"id": "ticket"}, {"id": "atm"}])

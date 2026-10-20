@@ -133,12 +133,16 @@
           {% if online_payment %}
             · Seña online: <strong>${{ deposit_preview|floatformat:"-2" }}</strong>
             · Saldo en el club: ${{ balance_preview|floatformat:"-2" }}
-          {% elif selected_complex.mp_alias %}
-            · se abona por Mercado Pago (alias {{ selected_complex.mp_alias }})
+          {% else %}
+            · Seña: <strong>${{ deposit_preview|floatformat:"-2" }}</strong>
+            · Saldo en el club: ${{ balance_preview|floatformat:"-2" }}
+            {% if selected_complex.mp_alias %}· pagá la seña por Mercado Pago (alias {{ selected_complex.mp_alias }}){% endif %}
           {% endif %}
         </p>
         {% if online_payment %}
           <p class="help">Te guardamos el horario por {{ hold_minutes }} minutos mientras pagás la seña. El turno se confirma cuando Mercado Pago aprueba el pago.</p>
+        {% else %}
+          <p class="help">La reserva queda con la seña pendiente. Podés abonarla por Mercado Pago o coordinarla con el complejo; el saldo se paga en el club.</p>
         {% endif %}
       {% endif %}
       <form method="post" action="{% url 'turno_reservar' %}" class="form-grid">
@@ -158,7 +162,7 @@
         </label>
         <div class="form-actions">
           <button class="btn btn--primary" type="submit">
-            {% if online_payment %}Reservar y pagar la seña{% else %}Confirmar turno{% endif %}
+            {% if online_payment %}Reservar y pagar la seña{% else %}Reservar con seña pendiente{% endif %}
           </button>
           <a class="btn btn--secondary" href="{% url 'turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}">Elegir otro horario</a>
         </div>

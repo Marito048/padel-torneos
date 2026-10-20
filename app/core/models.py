@@ -552,7 +552,7 @@ class CourtBooking(models.Model):
         """Libera las pre-reservas cuya seña venció."""
         now = now or timezone.now()
         return cls.objects.filter(
-            status="pending_payment", payment_expires_at__lt=now
+            status="pending_payment", payment_expires_at__lte=now
         ).update(
             status="cancelled",
             cancelled_at=now,

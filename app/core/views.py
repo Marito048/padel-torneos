@@ -2357,7 +2357,7 @@ def _cancel_expired_booking(booking) -> bool:
     updated = CourtBooking.objects.filter(
         pk=booking.pk,
         status="pending_payment",
-        payment_expires_at__lt=now,
+        payment_expires_at__lte=now,
     ).update(
         status="cancelled",
         cancelled_at=now,
@@ -2377,7 +2377,12 @@ def _checkout_payload(request, booking) -> dict:
     notification_url = request.build_absolute_uri(
         reverse("turno_pago_webhook", args=[booking.complex.slug])
     )
-    expires = timezone.localtime(booking.payment_expires_at).isoformat(timespec="milliseconds")
+    expires_at = timezone.localtime(booking.payment_expires_at)
+    expires_from = timezone.localtime(timezone.now())
+    if expires_from >= expires_at:
+        expires_from = expires_at - timedelta(seconds=1)
+    expires_from_iso = expires_from.isoformat(timespec="milliseconds")
+    expires_to_iso = expires_at.isoformat(timespec="milliseconds")
     descriptor = re.sub(r"[^A-Za-z0-9 ]", "", booking.complex.name).strip()[:22] or "PADEL SERVER"
     return {
         "items": [
@@ -2402,7 +2407,8 @@ def _checkout_payload(request, booking) -> dict:
         "auto_return": "approved",
         "statement_descriptor": descriptor,
         "expires": True,
-        "expiration_date_to": expires,
+        "expiration_date_from": expires_from_iso,
+        "expiration_date_to": expires_to_iso,
         "payment_methods": {
             # La retención es corta: sólo medios de acreditación inmediata.
             "excluded_payment_types": [{"id": "ticket"}, {"id": "atm"}],
