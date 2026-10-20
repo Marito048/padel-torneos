@@ -5,6 +5,13 @@
 # app queda colgada en gunicorn, el build nunca termina). La clave que usa
 # Nixpacks para el comando final es [start] cmd.
 #
+# OJO 2: DJANGO_SETTINGS_MODULE se exporta en el comando de arranque, no se
+# confía en [variables]. Al generar el Dockerfile, Nixpacks escribe
+# "ARG DJANGO_SETTINGS_MODULE" + "ENV DJANGO_SETTINGS_MODULE=${...}": si el
+# build no recibe ese --build-arg, la variable queda como cadena vacia y
+# Django la ignora (fallo "settings are not configured"). Con el export en
+# el comando no hay forma de que quede vacia.
+#
 # El proyecto Django vive en app/, no en la raíz del repo, así que todos los
 # comandos entran a ese directorio antes de tocar manage.py.
 #
@@ -22,4 +29,4 @@ cmds = [
 ]
 
 [start]
-cmd = "cd app && python manage.py migrate --noinput && python manage.py ensure_superuser && gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 3 --timeout 60"
+cmd = "cd app && export DJANGO_SETTINGS_MODULE=config.settings.railway PYTHONUNBUFFERED=1 && python manage.py migrate --noinput && python manage.py ensure_superuser && gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 3 --timeout 60"

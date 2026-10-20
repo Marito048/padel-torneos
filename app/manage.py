@@ -5,7 +5,10 @@ import sys
 
 
 def main():
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
+    # OJO: setdefault no pisa una DJANGO_SETTINGS_MODULE presente pero vacía
+    # (Django la ignora y falla con "settings are not configured").
+    if not os.environ.get("DJANGO_SETTINGS_MODULE"):
+        os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings.dev"
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

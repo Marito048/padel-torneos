@@ -296,6 +296,14 @@ general si no existe. Si el usuario ya existe **no** le pisa la contraseña (pon
 > lo segundo define una fase que corre durante el build (y como queda colgada en gunicorn,
 > el build nunca termina y Nixpacks falla con "No start command could be found").
 
+> `DJANGO_SETTINGS_MODULE` se exporta dentro del comando de arranque, no se confía en
+> `[variables]`: Nixpacks genera `ARG DJANGO_SETTINGS_MODULE` + `ENV ...=${...}`, y si el
+> build no recibe ese `--build-arg` la variable queda **vacía** (no ausente). Django ignora
+> una variable vacía y falla con "Requested setting DATABASES, but settings are not
+> configured". Con el `export` en el comando no hay forma de que quede vacía. Por el mismo
+> motivo `wsgi.py` y `manage.py` usan `if not os.environ.get(...)` en vez de `setdefault`
+> (que no pisa una variable presente-pero-vacía).
+
 ### 6. Login con Google
 El callback cambia de dominio: registrar en Google Cloud Console
 `https://<tu-dominio-railway>/cuentas/google/login/callback/` como URI de redirección autorizada.
