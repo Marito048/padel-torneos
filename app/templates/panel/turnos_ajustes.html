@@ -5,7 +5,7 @@
 {% block content %}
 <section class="panel-section">
   <h1>Precio y avisos</h1>
-  <p class="muted">Precio del turno, datos para cobrar por Mercado Pago y el WhatsApp que recibe el aviso de cada reserva.</p>
+  <p class="muted">Precio del turno, cobro online de la seña con Mercado Pago y el WhatsApp que recibe el aviso de cada reserva.</p>
   <div class="padel-actions">
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Volver a la agenda</a>
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_horarios' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Horarios y feriados</a>
@@ -37,6 +37,31 @@
           <input type="number" name="precio" min="0" step="0.01" value="{{ selected_complex.booking_price|floatformat:'-2' }}" placeholder="Ej: 8000">
         </label>
         <p class="help">Dejalo en 0 si los turnos no tienen precio. El precio se muestra en la página pública al reservar.</p>
+
+        <h3>Cobro online de la seña</h3>
+        <label>Access token de Mercado Pago
+          <input type="password" name="mp_access_token" maxlength="255" autocomplete="new-password"
+                 placeholder="{% if selected_complex.has_mp_token %}Configurado (dejalo vacío para conservarlo){% else %}APP_USR-...{% endif %}">
+        </label>
+        {% if selected_complex.has_mp_token %}
+          <label class="checkbox-row">
+            <input type="checkbox" name="mp_clear_token">
+            <span>Quitar el token y volver al cobro manual</span>
+          </label>
+        {% endif %}
+        <p class="help">
+          Con el token cargado, la reserva pública pide una seña del {{ deposit_percent }}% y se confirma
+          automáticamente cuando Mercado Pago aprueba el pago. El saldo se paga en el club.
+          Sin token, el turno se reserva y se cobra como antes (alias, link o en el club).
+          El token se guarda cifrado y no se vuelve a mostrar.
+        </p>
+        <p class="help">
+          Se obtiene en <a href="https://www.mercadopago.com.ar/developers/panel/app" target="_blank" rel="noopener">Mercado Pago Developers</a>
+          → tu aplicación → Credenciales de producción. Usá un token <strong>APP_USR-</strong> para cobrar de verdad
+          o <strong>TEST-</strong> para probar.
+        </p>
+
+        <h3>Datos de cobro manual (respaldo)</h3>
         <label>Alias o CVU de Mercado Pago
           <input type="text" name="mp_alias" maxlength="80" value="{{ selected_complex.mp_alias }}" placeholder="Ej: padel.complejo.mp">
         </label>
@@ -69,10 +94,15 @@
     <article class="padel-card">
       <h2>Cómo queda para el cliente</h2>
       <ul class="pause-list">
-        <li><span>Al reservar ve el precio del turno si es mayor a 0.</span></li>
-        <li><span>Al confirmar ve el alias o el link de Mercado Pago y puede avisarte por WhatsApp.</span></li>
+        <li><span>Al reservar ve el precio, la seña del {{ deposit_percent }}% y el saldo que se paga en el club.</span></li>
+        <li><span>Con Mercado Pago configurado, el horario queda retenido unos minutos y se confirma solo cuando se acredita la seña.</span></li>
+        {% if selected_complex.has_mp_token %}
+          <li><span>Si no paga la seña a tiempo, el horario se libera automáticamente.</span></li>
+        {% else %}
+          <li><span>Sin token, el cliente reserva y ve el alias o el link de Mercado Pago para coordinar el pago.</span></li>
+        {% endif %}
         <li><span>En la agenda, cada reserva tiene el botón «Avisar» que abre WhatsApp con el mensaje de confirmación ya escrito.</span></li>
-        <li><span>El botón «Marcar abonado» pasa el turno a cobrado y suma en los totales del día.</span></li>
+        <li><span>En la agenda, el botón de cobro registra primero la seña y después el saldo del club; los totales del día suman lo cobrado.</span></li>
       </ul>
     </article>
   </div>

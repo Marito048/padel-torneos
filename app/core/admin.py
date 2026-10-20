@@ -70,6 +70,7 @@ class ComplexAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug", "city")
     prepopulated_fields = {"slug": ("name",)}
     filter_horizontal = ("users",)
+    exclude = ("mp_access_token_encrypted",)
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -113,13 +114,17 @@ class CourtBookingAdmin(ComplexScopedAdminMixin, admin.ModelAdmin):
         "court",
         "complex",
         "status",
+        "deposit_amount",
+        "is_paid",
+        "balance_paid",
+        "payment_status",
         "customer_name",
         "customer_phone",
         "source",
     )
-    list_filter = ("status", "source", "complex", "court", "date")
-    search_fields = ("customer_name", "customer_phone", "code")
-    readonly_fields = ("code", "created_at", "cancelled_at")
+    list_filter = ("status", "source", "payment_status", "complex", "court", "date")
+    search_fields = ("customer_name", "customer_phone", "code", "payment_id")
+    readonly_fields = ("code", "created_at", "cancelled_at", "paid_at", "balance_paid_at")
     date_hierarchy = "date"
 
 

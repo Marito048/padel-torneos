@@ -5,6 +5,7 @@ la reserva pública sin registro (alta, conflictos y cancelación) y la gestión
 desde el panel (reservas manuales, bloqueos y configuración de horarios).
 """
 
+import json
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from unittest import mock
@@ -16,6 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.models import Complex, Court, CourtBooking, CourtDateOverride, CourtSchedule, SchedulePause
+from core.services import payments as payments_service
 from core.services import schedule as schedule_service
 
 User = get_user_model()
@@ -448,7 +450,8 @@ class PaymentAndWhatsAppTests(TurnosFixtureMixin, TestCase):
         booking = CourtBooking.objects.get()
         self.assertEqual(booking.price, Decimal("7500.00"))
         response = self.client.get(reverse("turno_confirmado", args=[booking.code]))
-        self.assertContains(response, "Pago del turno: $7500")
+        self.assertContains(response, "Seña del turno: $2250")
+        self.assertContains(response, "Saldo en el club: $5250")
         self.assertContains(response, "padel.principal")
         self.assertContains(response, "Pago pendiente")
 
@@ -596,6 +599,372 @@ class PaymentAndWhatsAppTests(TurnosFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Precio y avisos")
         self.assertContains(response, "Guardar ajustes")
+
+
+class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
+    """Seña obligatoria del 30% con Checkout Pro y confirmación automática."""
+
+    def setUp(self):
+        self.complex = self.make_complex(booking_price=Decimal("8000"))
+        self.complex.mp_alias = "padel.principal"
+        self.complex.mp_access_token = "APP_USR-12345678901234567890"
+        self.complex.save(
+            update_fields=["booking_price", "mp_alias", "mp_access_token_encrypted"]
+        )
+        self.court = self.make_court(self.complex)
+        self.day = timezone.localdate() + timedelta(days=5)
+        self.make_schedule(self.complex, day_type=schedule_service.day_type_for(self.day))
+
+    def reserve(self, **overrides):
+        data = {
+            "complejo": self.complex.slug,
+            "fecha": self.day.isoformat(),
+            "cancha": self.court.pk,
+            "hora": "09:00",
+            "nombre": "Ana Pérez",
+            "telefono": "2215551234",
+            "nota": "",
+        }
+        data.update(overrides)
+        return self.client.post(reverse("turno_reservar"), data)
+
+    def make_pending(self):
+        with mock.patch("core.views.notify_court_booking"):
+            self.reserve()
+        return CourtBooking.objects.get()
+
+    def payment_payload(self, booking, status="approved", amount="2400.00", reference=None):
+        return {
+            "id": "payment-123",
+            "status": status,
+            "external_reference": reference if reference is not None else booking.code,
+            "transaction_amount": amount,
+        }
+
+    def test_public_booking_holds_slot_and_requires_deposit(self):
+        with mock.patch("core.views.notify_court_booking") as notify:
+            response = self.reserve()
+        booking = CourtBooking.objects.get()
+        self.assertEqual(response.url, reverse("turno_confirmado", args=[booking.code]))
+        self.assertEqual(booking.status, "pending_payment")
+        self.assertEqual(booking.deposit_amount, Decimal("2400.00"))
+        self.assertFalse(booking.is_paid)
+        self.assertIsNotNone(booking.payment_expires_at)
+        notify.assert_not_called()
+
+    def test_confirmation_shows_deposit_balance_and_pay_button(self):
+        booking = self.make_pending()
+        response = self.client.get(reverse("turno_confirmado", args=[booking.code]))
+        self.assertContains(response, "Seña del turno: $2400")
+        self.assertContains(response, "Saldo en el club: $5600")
+        self.assertContains(response, "Pagar seña con Mercado Pago")
+        self.assertContains(response, "Seña pendiente")
+
+    def test_pay_view_creates_preference_and_redirects(self):
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.create_checkout_preference") as create:
+            create.return_value = {"id": "pref-1", "init_point": "https://mp.test/checkout"}
+            response = self.client.get(reverse("turno_pagar", args=[booking.code]))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "https://mp.test/checkout")
+        booking.refresh_from_db()
+        self.assertEqual(booking.payment_preference_id, "pref-1")
+        self.assertEqual(booking.payment_init_point, "https://mp.test/checkout")
+        args, _ = create.call_args
+        self.assertEqual(args[0], "APP_USR-12345678901234567890")
+        payload = args[1]
+        self.assertEqual(payload["external_reference"], booking.code)
+        self.assertEqual(payload["items"][0]["unit_price"], 2400.0)
+        self.assertTrue(payload["notification_url"].endswith(f"/turnos/pago/mercadopago/{self.complex.slug}/"))
+        self.assertTrue(payload["back_urls"]["success"].endswith(f"/turnos/{booking.code}/pago/retorno/"))
+        self.assertEqual(payload["payment_methods"]["excluded_payment_types"], [{"id": "ticket"}, {"id": "atm"}])
+
+    def test_pay_view_reuses_the_existing_preference(self):
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.create_checkout_preference") as create:
+            create.return_value = {"id": "pref-1", "init_point": "https://mp.test/checkout"}
+            self.client.get(reverse("turno_pagar", args=[booking.code]))
+            response = self.client.get(reverse("turno_pagar", args=[booking.code]))
+        self.assertEqual(response.url, "https://mp.test/checkout")
+        self.assertEqual(create.call_count, 1)
+
+    def test_webhook_approves_and_marks_paid_once(self):
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch, mock.patch(
+            "core.views.notify_court_booking"
+        ) as notify:
+            fetch.return_value = self.payment_payload(booking)
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            booking.refresh_from_db()
+            self.assertEqual(booking.status, "booked")
+            self.assertTrue(booking.is_paid)
+            self.assertEqual(booking.payment_id, "payment-123")
+            self.assertEqual(booking.payment_status, "approved")
+            self.assertIsNotNone(booking.paid_at)
+            self.assertIsNone(booking.payment_expires_at)
+            notify.assert_called_once()
+            self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+            notify.assert_called_once()
+
+    def test_webhook_in_process_then_approved(self):
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch:
+            fetch.return_value = self.payment_payload(booking, status="in_process")
+            self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+            booking.refresh_from_db()
+            self.assertEqual(booking.status, "pending_payment")
+            self.assertFalse(booking.is_paid)
+            self.assertEqual(booking.payment_status, "in_process")
+
+            fetch.return_value = self.payment_payload(booking)
+            self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "booked")
+        self.assertTrue(booking.is_paid)
+
+    def test_webhook_rejects_a_different_amount(self):
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch:
+            fetch.return_value = self.payment_payload(booking, amount="100.00")
+            self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending_payment")
+        self.assertFalse(booking.is_paid)
+        self.assertEqual(booking.payment_status, "amount_mismatch")
+
+    def test_webhook_ignores_another_reference(self):
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch:
+            fetch.return_value = self.payment_payload(booking, reference="OTRO-TURNO")
+            self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending_payment")
+        self.assertFalse(booking.is_paid)
+
+    def test_expired_hold_is_released_and_slot_can_be_reserved_again(self):
+        booking = self.make_pending()
+        booking.payment_expires_at = timezone.now() - timedelta(minutes=1)
+        booking.save(update_fields=["payment_expires_at"])
+        self.client.get(
+            reverse("turnos"), {"complejo": self.complex.slug, "fecha": self.day.isoformat()}
+        )
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+        self.assertEqual(booking.payment_status, "expired")
+        self.reserve(nombre="Otra Persona")
+        self.assertEqual(CourtBooking.objects.filter(status="pending_payment").count(), 1)
+        self.assertEqual(CourtBooking.objects.count(), 2)
+
+    def test_expired_hold_cannot_start_a_payment(self):
+        booking = self.make_pending()
+        booking.payment_expires_at = timezone.now() - timedelta(minutes=1)
+        booking.save(update_fields=["payment_expires_at"])
+        with mock.patch("core.views.payments_service.create_checkout_preference") as create:
+            response = self.client.get(reverse("turno_pagar", args=[booking.code]))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("turno_confirmado", args=[booking.code]))
+        create.assert_not_called()
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+
+    def test_approved_payment_after_expiry_restores_a_free_slot(self):
+        booking = self.make_pending()
+        booking.payment_expires_at = timezone.now() - timedelta(minutes=1)
+        booking.save(update_fields=["payment_expires_at"])
+        CourtBooking.expire_pending()
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch, mock.patch(
+            "core.views.notify_court_booking"
+        ) as notify:
+            fetch.return_value = self.payment_payload(booking)
+            self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+            notify.assert_called_once()
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "booked")
+        self.assertTrue(booking.is_paid)
+
+    def test_payment_after_client_cancellation_is_flagged_without_reopening(self):
+        booking = self.make_pending()
+        self.client.post(reverse("turno_cancelar", args=[booking.code]))
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+        self.assertEqual(booking.payment_status, "cancelled")
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch:
+            fetch.return_value = self.payment_payload(booking)
+            self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+        self.assertTrue(booking.is_paid)
+        self.assertEqual(booking.payment_status, "approved_conflict")
+
+    def test_return_from_checkout_verifies_the_payment(self):
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch:
+            fetch.return_value = self.payment_payload(booking)
+            response = self.client.get(
+                reverse("turno_pago_retorno", args=[booking.code]) + "?payment_id=payment-123"
+            )
+        self.assertEqual(response.status_code, 302)
+        booking.refresh_from_db()
+        self.assertTrue(booking.is_paid)
+        self.assertEqual(booking.status, "booked")
+
+    def test_manual_payment_confirms_a_pending_hold(self):
+        booking = self.make_pending()
+        admin = User.objects.create_superuser("admin-seña", password="clave-segura-123")
+        self.client.force_login(admin)
+        self.client.post(
+            reverse("panel_turno_accion"),
+            {
+                "complejo": self.complex.slug,
+                "fecha": self.day.isoformat(),
+                "accion": "marcar_pagado",
+                "turno_id": booking.pk,
+            },
+        )
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "booked")
+        self.assertTrue(booking.is_paid)
+        self.assertEqual(booking.payment_status, "manual")
+        self.assertIsNone(booking.payment_expires_at)
+
+    def test_panel_charges_the_club_balance_after_the_deposit(self):
+        booking = self.make_pending()
+        admin = User.objects.create_superuser("admin-saldo", password="clave-segura-123")
+        self.client.force_login(admin)
+        base = {
+            "complejo": self.complex.slug,
+            "fecha": self.day.isoformat(),
+            "accion": "marcar_pagado",
+            "turno_id": booking.pk,
+        }
+        self.client.post(reverse("panel_turno_accion"), base)
+        booking.refresh_from_db()
+        self.assertTrue(booking.is_paid)
+        self.assertFalse(booking.balance_paid)
+        self.assertEqual(booking.paid_amount, Decimal("2400.00"))
+        self.assertEqual(booking.balance_amount, Decimal("5600.00"))
+
+        self.client.post(reverse("panel_turno_accion"), base)
+        booking.refresh_from_db()
+        self.assertTrue(booking.balance_paid)
+        self.assertIsNotNone(booking.balance_paid_at)
+        self.assertEqual(booking.paid_amount, Decimal("8000.00"))
+        self.assertEqual(booking.balance_amount, Decimal("0.00"))
+
+        response = self.client.get(
+            reverse("panel_turnos"),
+            {"complejo": self.complex.slug, "fecha": self.day.isoformat()},
+        )
+        self.assertContains(response, "Cobrado del día")
+        self.assertContains(response, "$8000")
+
+    def test_free_booking_does_not_require_a_deposit(self):
+        self.complex.booking_price = Decimal("0")
+        self.complex.save(update_fields=["booking_price"])
+        self.reserve()
+        booking = CourtBooking.objects.get()
+        self.assertEqual(booking.status, "booked")
+        self.assertEqual(booking.deposit_amount, Decimal("0"))
+        self.assertTrue(booking.is_paid)
+        response = self.client.get(reverse("turno_confirmado", args=[booking.code]))
+        self.assertNotContains(response, "Seña del turno")
+
+    def test_without_token_the_manual_flow_still_works(self):
+        self.complex.mp_access_token = ""
+        self.complex.save(update_fields=["mp_access_token_encrypted"])
+        self.reserve()
+        booking = CourtBooking.objects.get()
+        self.assertEqual(booking.status, "booked")
+        self.assertFalse(booking.is_paid)
+        response = self.client.get(reverse("turno_confirmado", args=[booking.code]))
+        self.assertContains(response, "Seña del turno: $2400")
+        self.assertContains(response, "padel.principal")
+
+    def test_deposit_rounding(self):
+        self.assertEqual(
+            payments_service.deposit_amount_for(Decimal("7500.00")), Decimal("2250.00")
+        )
+        self.assertEqual(
+            payments_service.deposit_amount_for(Decimal("99.99")), Decimal("30.00")
+        )
+
+    def test_settings_save_and_clear_the_token(self):
+        admin = User.objects.create_superuser("admin-token", password="clave-segura-123")
+        self.client.force_login(admin)
+        token = "APP_USR-99999999999999999999"
+        response = self.client.post(
+            reverse("panel_horarios_accion"),
+            {
+                "complejo": self.complex.slug,
+                "accion": "guardar_ajustes",
+                "precio": "8000",
+                "mp_access_token": token,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.complex.refresh_from_db()
+        self.assertTrue(self.complex.has_mp_token)
+        self.assertEqual(self.complex.mp_access_token, token)
+        self.assertNotIn(token, self.complex.mp_access_token_encrypted)
+
+        self.client.post(
+            reverse("panel_horarios_accion"),
+            {
+                "complejo": self.complex.slug,
+                "accion": "guardar_ajustes",
+                "precio": "8000",
+                "mp_access_token": "",
+            },
+        )
+        self.complex.refresh_from_db()
+        self.assertTrue(self.complex.has_mp_token)
+
+        self.client.post(
+            reverse("panel_horarios_accion"),
+            {
+                "complejo": self.complex.slug,
+                "accion": "guardar_ajustes",
+                "precio": "8000",
+                "mp_clear_token": "on",
+            },
+        )
+        self.complex.refresh_from_db()
+        self.assertFalse(self.complex.has_mp_token)
 
 
 class PublicCalendarViewTests(TurnosFixtureMixin, TestCase):

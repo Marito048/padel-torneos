@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 from datetime import date as date_cls, time as time_cls, timedelta
 from decimal import Decimal, InvalidOperation
@@ -29,6 +31,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from core import access
@@ -54,11 +57,13 @@ from core.models import (
 from core.notifications import notify_court_booking, notify_new_signup_request, notify_tournament_team_signup
 from core.services import draws
 from core.services import matches as matches_service
+from core.services import payments as payments_service
 from core.services import players as players_service
 from core.services import schedule as schedule_service
 from core.services.tournament_workflow import register_match_result
 
 PLAYOFF_STAGES = draws.PLAYOFF_STAGES
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -2346,8 +2351,186 @@ def _selected_public_complex(request):
     return complexes, selected
 
 
+def _cancel_expired_booking(booking) -> bool:
+    """Cancela una pre-reserva vencida y libera el horario."""
+    now = timezone.now()
+    updated = CourtBooking.objects.filter(
+        pk=booking.pk,
+        status="pending_payment",
+        payment_expires_at__lt=now,
+    ).update(
+        status="cancelled",
+        cancelled_at=now,
+        payment_status="expired",
+    )
+    if updated:
+        booking.refresh_from_db()
+    return bool(updated)
+
+
+def _checkout_payload(request, booking) -> dict:
+    """Arma la preferencia de Checkout Pro para la seña del turno."""
+    deposit = booking.deposit_amount or payments_service.deposit_amount_for(booking.price)
+    success_url = request.build_absolute_uri(
+        reverse("turno_pago_retorno", args=[booking.code])
+    )
+    notification_url = request.build_absolute_uri(
+        reverse("turno_pago_webhook", args=[booking.complex.slug])
+    )
+    expires = timezone.localtime(booking.payment_expires_at).isoformat(timespec="milliseconds")
+    descriptor = re.sub(r"[^A-Za-z0-9 ]", "", booking.complex.name).strip()[:22] or "PADEL SERVER"
+    return {
+        "items": [
+            {
+                "title": (
+                    f"Seña turno {booking.court.name} "
+                    f"{booking.date:%d/%m} {booking.start_time:%H:%M}"
+                )[:256],
+                "description": f"{booking.complex.name} · {booking.code}",
+                "quantity": 1,
+                "currency_id": "ARS",
+                "unit_price": float(deposit),
+            }
+        ],
+        "external_reference": booking.code,
+        "notification_url": notification_url,
+        "back_urls": {
+            "success": success_url,
+            "failure": success_url,
+            "pending": success_url,
+        },
+        "auto_return": "approved",
+        "statement_descriptor": descriptor,
+        "expires": True,
+        "expiration_date_to": expires,
+        "payment_methods": {
+            # La retención es corta: sólo medios de acreditación inmediata.
+            "excluded_payment_types": [{"id": "ticket"}, {"id": "atm"}],
+            "installments": 1,
+        },
+        "metadata": {
+            "booking_code": booking.code,
+            "complex_slug": booking.complex.slug,
+        },
+    }
+
+
+def _apply_mp_payment(booking, payment: dict) -> bool:
+    """Aplica el estado de un pago de Mercado Pago a la reserva.
+
+    El webhook y la vuelta del checkout no se creen el estado que viene en la
+    URL: siempre se consulta el pago contra la API y se valida la referencia.
+    """
+    if not isinstance(payment, dict):
+        return False
+    payment_id = str(payment.get("id") or "").strip()
+    external_reference = str(payment.get("external_reference") or "").strip()
+    if external_reference and external_reference != booking.code:
+        return False
+    status = str(payment.get("status") or "").strip()
+    if not status:
+        return False
+    if payment_id and CourtBooking.objects.filter(payment_id=payment_id).exclude(pk=booking.pk).exists():
+        logger.warning("Pago %s ya asociado a otro turno", payment_id)
+        return False
+
+    expected = booking.deposit_amount or payments_service.deposit_amount_for(booking.price)
+    raw_amount = payment.get("transaction_amount")
+    try:
+        paid_amount = Decimal(str(raw_amount)) if raw_amount is not None else None
+    except (InvalidOperation, TypeError, ValueError):
+        paid_amount = None
+    if paid_amount is not None and expected > 0 and paid_amount < expected - Decimal("0.01"):
+        booking.payment_id = payment_id or booking.payment_id
+        booking.payment_provider = "mercadopago"
+        booking.payment_status = "amount_mismatch"
+        booking.save(update_fields=["payment_id", "payment_provider", "payment_status"])
+        return False
+
+    was_paid = booking.is_paid
+    previous_payment_status = booking.payment_status
+    booking.payment_provider = "mercadopago"
+    if payment_id:
+        booking.payment_id = payment_id
+    booking.payment_status = status
+
+    if status == "approved":
+        booking.is_paid = True
+        booking.paid_at = booking.paid_at or timezone.now()
+        if booking.status == "pending_payment":
+            booking.status = "booked"
+            booking.cancelled_at = None
+            booking.payment_expires_at = None
+        elif booking.status == "cancelled" and not was_paid:
+            if previous_payment_status != "expired":
+                # Cancelación explícita del cliente o del complejo: no se
+                # revive el turno; el pago queda para devolución/reubicación.
+                booking.payment_status = "approved_conflict"
+            else:
+                conflict = (
+                    CourtBooking.objects.filter(
+                        court_id=booking.court_id,
+                        date=booking.date,
+                        start_time=booking.start_time,
+                    )
+                    .exclude(pk=booking.pk)
+                    .filter(status__in=["pending_payment", "booked", "blocked"])
+                    .exists()
+                )
+                if conflict:
+                    # El pago llegó tarde y otra persona ya tomó el horario.
+                    booking.payment_status = "approved_conflict"
+                else:
+                    booking.status = "booked"
+                    booking.cancelled_at = None
+                    booking.payment_expires_at = None
+    elif status in ("refunded", "charged_back"):
+        booking.is_paid = False
+        booking.paid_at = None
+    elif status in ("rejected", "cancelled"):
+        # Permitir reintentar con una preferencia nueva.
+        booking.payment_preference_id = ""
+        booking.payment_init_point = ""
+
+    booking.save()
+    if status == "approved" and not was_paid and booking.status == "booked":
+        notify_court_booking(booking)
+    return True
+
+
+def _webhook_payment_id(request) -> tuple[str, str]:
+    """Extrae (payment_id, tipo) del webhook JSON o del IPN de Mercado Pago."""
+    payload = {}
+    if request.body:
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    payment_id = (
+        data.get("id")
+        or payload.get("id")
+        or request.POST.get("id")
+        or request.POST.get("data.id")
+        or request.GET.get("id")
+        or request.GET.get("data.id")
+        or ""
+    )
+    kind = (
+        payload.get("type")
+        or payload.get("topic")
+        or request.POST.get("topic")
+        or request.GET.get("topic")
+        or ""
+    )
+    return str(payment_id).strip(), str(kind).strip()
+
+
 def turnos(request):
     """Grilla pública de turnos con reserva sin registro (calendario + horarios)."""
+    CourtBooking.expire_pending()
     today = timezone.localdate()
     complexes, selected = _selected_public_complex(request)
 
@@ -2406,6 +2589,23 @@ def turnos(request):
             "calendar": calendar_data,
             "board": board,
             "selected_slot": selected_slot,
+            "deposit_percent": getattr(settings, "BOOKING_DEPOSIT_PERCENT", 30),
+            "deposit_preview": (
+                payments_service.deposit_amount_for(selected.booking_price) if selected else Decimal("0")
+            ),
+            "online_payment": bool(
+                selected
+                and selected.booking_price > 0
+                and selected.has_mp_token
+                and payments_service.deposit_amount_for(selected.booking_price) > 0
+            ),
+            "balance_preview": (
+                (selected.booking_price or Decimal("0"))
+                - payments_service.deposit_amount_for(selected.booking_price)
+                if selected
+                else Decimal("0")
+            ),
+            "hold_minutes": max(int(getattr(settings, "BOOKING_HOLD_MINUTES", 15)), 1),
         },
     )
 
@@ -2448,6 +2648,14 @@ def turno_reservar(request):
         messages.error(request, "Ese turno ya pasó. Elegí otro horario.")
         return redirect(back)
 
+    CourtBooking.expire_pending()
+    price = complex_obj.booking_price or Decimal("0")
+    deposit = payments_service.deposit_amount_for(price)
+    online_payment = bool(price > 0 and deposit > 0 and complex_obj.has_mp_token)
+    hold_minutes = max(int(getattr(settings, "BOOKING_HOLD_MINUTES", 15)), 1)
+    payment_expires_at = (
+        timezone.now() + timedelta(minutes=hold_minutes) if online_payment else None
+    )
     try:
         with transaction.atomic():
             booking = CourtBooking.objects.create(
@@ -2456,24 +2664,43 @@ def turno_reservar(request):
                 date=day,
                 start_time=bounds[0],
                 end_time=bounds[1],
-                status="booked",
+                status="pending_payment" if online_payment else "booked",
                 customer_name=name[:80],
                 customer_phone=phone[:40],
                 note=note[:140],
-                price=complex_obj.booking_price,
+                price=price,
+                deposit_amount=deposit,
+                is_paid=price <= 0,
+                payment_expires_at=payment_expires_at,
+                payment_provider="mercadopago" if online_payment else "",
+                payment_status="pending" if online_payment else "",
                 source="public",
             )
     except IntegrityError:
         messages.error(request, "Ese horario acaba de ser reservado por otra persona. Elegí otro.")
         return redirect(back)
 
-    notify_court_booking(booking)
-    messages.success(request, "¡Turno confirmado! Te esperamos.")
+    if online_payment:
+        messages.info(
+            request,
+            f"Te guardamos el horario por {hold_minutes} minutos. "
+            "Pagá la seña para confirmar el turno.",
+        )
+    else:
+        notify_court_booking(booking)
+        if deposit > 0:
+            messages.info(
+                request,
+                "Turno reservado. La seña queda pendiente; el saldo restante se paga en el club.",
+            )
+        else:
+            messages.success(request, "¡Turno confirmado! Te esperamos.")
     return redirect("turno_confirmado", code=booking.code)
 
 
 def turno_confirmado(request, code):
     booking = get_object_or_404(CourtBooking.objects.select_related("complex", "court"), code=code.upper())
+    _cancel_expired_booking(booking)
     whatsapp_url = ""
     if booking.complex.whatsapp_phone and booking.status == "booked":
         whatsapp_url = _wa_url(
@@ -2492,27 +2719,192 @@ def turno_confirmado(request, code):
             "public_section": "turnos",
             "booking": booking,
             "whatsapp_url": whatsapp_url,
-            "can_cancel": booking.status == "booked"
+            "can_cancel": booking.status in ("pending_payment", "booked")
             and not schedule_service.is_slot_past(booking.date, booking.start_time),
+            "hold_minutes": max(int(getattr(settings, "BOOKING_HOLD_MINUTES", 15)), 1),
         },
     )
 
 
+def turno_pagar(request, code):
+    """Crea (o reutiliza) el checkout de la seña y manda a Mercado Pago."""
+    booking = get_object_or_404(
+        CourtBooking.objects.select_related("complex", "court"), code=code.upper()
+    )
+    back = reverse("turno_confirmado", args=[booking.code])
+    if booking.status != "pending_payment":
+        messages.info(request, "Ese turno ya no está esperando el pago de la seña.")
+        return redirect(back)
+    if _cancel_expired_booking(booking):
+        messages.error(request, "La seña venció y el horario se liberó. Elegí otro turno.")
+        return redirect(back)
+
+    token = booking.complex.mp_access_token
+    if not token:
+        messages.error(request, "El complejo todavía no habilitó el pago online. Coordiná por WhatsApp.")
+        return redirect(back)
+
+    now = timezone.now()
+    if (
+        booking.payment_init_point
+        and booking.payment_preference_id
+        and booking.payment_expires_at
+        and booking.payment_expires_at > now
+    ):
+        return redirect(booking.payment_init_point)
+
+    if not booking.payment_expires_at:
+        booking.payment_expires_at = now + timedelta(
+            minutes=max(int(getattr(settings, "BOOKING_HOLD_MINUTES", 15)), 1)
+        )
+    deposit = booking.deposit_amount or payments_service.deposit_amount_for(booking.price)
+    if deposit <= 0:
+        messages.error(request, "Este turno no tiene una seña para cobrar.")
+        return redirect(back)
+
+    try:
+        preference = payments_service.create_checkout_preference(
+            token, _checkout_payload(request, booking)
+        )
+    except payments_service.MercadoPagoError:
+        messages.error(
+            request,
+            "No pudimos iniciar el pago con Mercado Pago. Probá de nuevo en un momento "
+            "o coordiná con el complejo.",
+        )
+        return redirect(back)
+
+    preference_id = str(preference.get("id") or "").strip()
+    init_point = preference.get("sandbox_init_point") if token.startswith("TEST-") else ""
+    init_point = init_point or preference.get("init_point") or preference.get("sandbox_init_point")
+    if not preference_id or not init_point:
+        messages.error(
+            request,
+            "Mercado Pago no devolvió un checkout válido. Probá de nuevo o coordiná con el complejo.",
+        )
+        return redirect(back)
+
+    booking.payment_preference_id = preference_id
+    booking.payment_init_point = init_point
+    booking.payment_provider = "mercadopago"
+    booking.payment_status = "pending"
+    booking.save(
+        update_fields=[
+            "payment_preference_id",
+            "payment_init_point",
+            "payment_provider",
+            "payment_status",
+            "payment_expires_at",
+        ]
+    )
+    return redirect(init_point)
+
+
+def turno_pago_retorno(request, code):
+    """Vuelta desde Mercado Pago: verifica el pago contra la API, no la URL."""
+    booking = get_object_or_404(
+        CourtBooking.objects.select_related("complex", "court"), code=code.upper()
+    )
+    payment_id = (request.GET.get("payment_id") or request.GET.get("collection_id") or "").strip()
+    if payment_id:
+        if not booking.complex.has_mp_token:
+            messages.warning(request, "El complejo no tiene configurado el cobro online.")
+        else:
+            try:
+                payment = payments_service.fetch_payment(
+                    booking.complex.mp_access_token, payment_id
+                )
+            except payments_service.MercadoPagoError:
+                messages.warning(
+                    request,
+                    "Estamos verificando el pago con Mercado Pago. Actualizá esta página en unos segundos.",
+                )
+            else:
+                _apply_mp_payment(booking, payment)
+                booking.refresh_from_db()
+    else:
+        messages.info(
+            request,
+            "Mercado Pago todavía no nos informó el pago. Si ya pagaste, esperá unos segundos "
+            "y actualizá la página.",
+        )
+
+    if booking.payment_status == "approved_conflict":
+        messages.warning(
+            request,
+            "El pago se acreditó, pero el horario ya no estaba disponible. "
+            "Contactá al complejo para reubicarte o pedir la devolución.",
+        )
+    elif booking.payment_status == "amount_mismatch":
+        messages.warning(
+            request,
+            "El monto pagado no coincide con la seña. El complejo va a revisar el pago.",
+        )
+    elif booking.is_paid:
+        if booking.balance_paid:
+            messages.success(request, "Pago acreditado. El turno quedó abonado en su totalidad.")
+        else:
+            messages.success(request, "Seña acreditada. El saldo restante se paga en el club.")
+    elif booking.status == "pending_payment" and booking.hold_expired:
+        _cancel_expired_booking(booking)
+        messages.error(request, "La seña venció y el horario se liberó. Elegí otro turno.")
+    elif booking.status == "cancelled" and booking.payment_status == "expired":
+        messages.error(request, "La seña venció y el horario se liberó. Elegí otro turno.")
+    return redirect("turno_confirmado", code=booking.code)
+
+
+@csrf_exempt
+def turno_pago_webhook(request, slug):
+    """Webhook de Mercado Pago. Sólo se usa como aviso: el pago se consulta a la API."""
+    complex_obj = Complex.objects.filter(slug=slug).first()
+    if complex_obj is None or not complex_obj.has_mp_token:
+        return JsonResponse({"ok": True})
+    payment_id, kind = _webhook_payment_id(request)
+    if not payment_id or (kind and kind not in ("payment", "merchant_order")):
+        return JsonResponse({"ok": True})
+    if kind == "merchant_order":
+        return JsonResponse({"ok": True})
+    try:
+        payment = payments_service.fetch_payment(complex_obj.mp_access_token, payment_id)
+    except payments_service.MercadoPagoError as exc:
+        if exc.status_code in (400, 401, 403, 404):
+            return JsonResponse({"ok": True})
+        return JsonResponse({"ok": False}, status=502)
+
+    booking = CourtBooking.objects.filter(
+        complex=complex_obj,
+        code=str(payment.get("external_reference") or "").strip().upper(),
+    ).first()
+    if booking is None:
+        return JsonResponse({"ok": True})
+    _apply_mp_payment(booking, payment)
+    return JsonResponse({"ok": True})
+
+
 def turno_cancelar(request, code):
     booking = get_object_or_404(CourtBooking.objects.select_related("complex", "court"), code=code.upper())
-    can_cancel = booking.status == "booked" and not schedule_service.is_slot_past(
+    _cancel_expired_booking(booking)
+    can_cancel = booking.status in ("pending_payment", "booked") and not schedule_service.is_slot_past(
         booking.date, booking.start_time
     )
     if request.method == "POST":
-        if booking.status != "booked":
+        if booking.status not in ("pending_payment", "booked"):
             messages.info(request, "Ese turno ya no está activo.")
         elif not can_cancel:
             messages.error(request, "El turno ya pasó y no se puede cancelar.")
         else:
             booking.status = "cancelled"
             booking.cancelled_at = timezone.now()
-            booking.save(update_fields=["status", "cancelled_at"])
-            messages.success(request, "Turno cancelado. El horario vuelve a estar libre.")
+            if booking.payment_status == "pending":
+                booking.payment_status = "cancelled"
+            booking.save(update_fields=["status", "cancelled_at", "payment_status"])
+            if booking.is_paid:
+                messages.warning(
+                    request,
+                    "Turno cancelado. Si pagaste la seña, coordiná la devolución con el complejo.",
+                )
+            else:
+                messages.success(request, "Turno cancelado. El horario vuelve a estar libre.")
         return redirect("turno_confirmado", code=booking.code)
     return render(
         request,
@@ -2538,6 +2930,7 @@ def _turnos_complex(request):
 @login_required
 def panel_turnos(request):
     """Agenda del día: ocupación, carga manual, bloqueos, cobros y cancelaciones."""
+    CourtBooking.expire_pending()
     complexes, selected = _turnos_complex(request)
     today = timezone.localdate()
     day = _parse_date(request.GET.get("fecha"), today)
@@ -2548,12 +2941,13 @@ def panel_turnos(request):
 
     day_total = Decimal("0")
     day_paid = Decimal("0")
+    day_balance = Decimal("0")
     for booking in bookings:
         if booking.status == "cancelled":
             continue
         day_total += booking.price or Decimal("0")
-        if booking.is_paid:
-            day_paid += booking.price or Decimal("0")
+        day_paid += booking.paid_amount
+        day_balance += booking.balance_amount
         if booking.customer_phone and booking.status == "booked":
             booking.wa_url = _wa_url(
                 booking.customer_phone,
@@ -2565,6 +2959,32 @@ def panel_turnos(request):
             )
         else:
             booking.wa_url = ""
+        # Acción de cobro que corresponde según lo ya registrado: primero la
+        # seña online/manual y, una vez abonada, el saldo que se paga en el club.
+        if (
+            booking.is_paid
+            and booking.deposit_amount > 0
+            and not booking.balance_paid
+            and booking.balance_amount > 0
+        ):
+            booking.pay_action = "marcar_pagado"
+            booking.pay_label = "Cobrar saldo"
+        elif booking.is_paid and booking.deposit_amount > 0 and booking.balance_paid:
+            booking.pay_action = "marcar_pendiente"
+            booking.pay_label = "Marcar saldo pendiente"
+        elif booking.is_paid:
+            booking.pay_action = "marcar_pendiente"
+            booking.pay_label = (
+                "Marcar seña pendiente" if booking.deposit_amount > 0 else "Marcar pendiente"
+            )
+        else:
+            booking.pay_action = "marcar_pagado"
+            if booking.status == "pending_payment":
+                booking.pay_label = "Confirmar seña"
+            elif booking.deposit_amount > 0:
+                booking.pay_label = "Marcar seña abonada"
+            else:
+                booking.pay_label = "Marcar abonado"
 
     return render(
         request,
@@ -2580,6 +3000,8 @@ def panel_turnos(request):
             "bookings": bookings,
             "day_total": day_total,
             "day_paid": day_paid,
+            "day_balance": day_balance,
+            "deposit_percent": getattr(settings, "BOOKING_DEPOSIT_PERCENT", 30),
         },
     )
 
@@ -2627,6 +3049,7 @@ def panel_turnos_horarios(request):
 def panel_turno_accion(request):
     complex_obj = get_object_or_404(Complex, slug=(request.POST.get("complejo") or ""))
     access.require_complex_access(request.user, complex_obj)
+    CourtBooking.expire_pending()
     action = request.POST.get("accion")
     day = _parse_date(request.POST.get("fecha"))
     back = f"{reverse('panel_turnos')}?complejo={complex_obj.slug}"
@@ -2635,21 +3058,64 @@ def panel_turno_accion(request):
 
     if action in ("marcar_pagado", "marcar_pendiente"):
         booking = get_object_or_404(CourtBooking, pk=request.POST.get("turno_id") or 0, complex=complex_obj)
-        booking.is_paid = action == "marcar_pagado"
-        booking.save(update_fields=["is_paid"])
-        messages.success(
-            request,
-            "Turno marcado como abonado." if booking.is_paid else "Turno marcado como pendiente de pago.",
+        # Segundo paso del cobro: la seña ya está abonada y falta el saldo del club.
+        charging_balance = (
+            action == "marcar_pagado"
+            and booking.deposit_amount > 0
+            and booking.is_paid
+            and not booking.balance_paid
+            and booking.balance_amount > 0
         )
+        uncharging_balance = action == "marcar_pendiente" and booking.balance_paid
+        if charging_balance:
+            booking.balance_paid = True
+            booking.balance_paid_at = timezone.now()
+            booking.save(update_fields=["balance_paid", "balance_paid_at"])
+            messages.success(request, "Saldo del turno marcado como cobrado.")
+        elif uncharging_balance:
+            booking.balance_paid = False
+            booking.balance_paid_at = None
+            booking.save(update_fields=["balance_paid", "balance_paid_at"])
+            messages.success(request, "Saldo del turno marcado como pendiente.")
+        else:
+            fields = ["is_paid", "paid_at", "payment_provider", "payment_status"]
+            if action == "marcar_pagado":
+                booking.is_paid = True
+                booking.paid_at = booking.paid_at or timezone.now()
+                booking.payment_provider = booking.payment_provider or "manual"
+                booking.payment_status = "manual"
+                if booking.status == "pending_payment":
+                    booking.status = "booked"
+                    booking.cancelled_at = None
+                    booking.payment_expires_at = None
+                    fields += ["status", "cancelled_at", "payment_expires_at"]
+            else:
+                booking.is_paid = False
+                booking.paid_at = None
+                booking.payment_status = ""
+            booking.save(update_fields=fields)
+            if action == "marcar_pagado":
+                noun = "Seña" if booking.deposit_amount > 0 else "Turno"
+                messages.success(request, f"{noun} marcada como abonada.")
+            else:
+                messages.success(request, "Turno marcado como pendiente de pago.")
         return redirect(back)
 
     if action == "cancelar":
         booking = get_object_or_404(CourtBooking, pk=request.POST.get("turno_id") or 0, complex=complex_obj)
-        if booking.status in ("booked", "blocked"):
+        if booking.status in ("pending_payment", "booked", "blocked"):
             booking.status = "cancelled"
             booking.cancelled_at = timezone.now()
-            booking.save(update_fields=["status", "cancelled_at"])
-            messages.success(request, "Turno cancelado; el horario quedó libre.")
+            if booking.payment_status in ("pending", "in_process"):
+                booking.payment_status = "cancelled"
+            booking.save(update_fields=["status", "cancelled_at", "payment_status"])
+            if booking.is_paid or booking.balance_paid:
+                messages.warning(
+                    request,
+                    "Turno cancelado. Los pagos registrados requieren devolución o acuerdo con el cliente.",
+                )
+            else:
+                messages.success(request, "Turno cancelado; el horario quedó libre.")
         else:
             messages.info(request, "Ese turno ya estaba cancelado.")
         return redirect(back)
@@ -2714,6 +3180,7 @@ def panel_turnos_ajustes(request):
         {
             "complexes": complexes,
             "selected_complex": selected,
+            "deposit_percent": getattr(settings, "BOOKING_DEPOSIT_PERCENT", 30),
         },
     )
 
@@ -2820,10 +3287,21 @@ def panel_horarios_accion(request):
             except ValidationError:
                 messages.error(request, "El link de Mercado Pago no parece válido.")
                 return redirect(ajustes_back)
+
+        token_raw = (request.POST.get("mp_access_token") or "").strip()
+        clear_token = request.POST.get("mp_clear_token") == "on"
+        if token_raw and len(token_raw) < 20:
+            messages.error(request, "El access token de Mercado Pago no parece válido.")
+            return redirect(ajustes_back)
+
         complex_obj.booking_price = price.quantize(Decimal("0.01"))
         complex_obj.mp_alias = (request.POST.get("mp_alias") or "").strip()[:80]
         complex_obj.mp_holder = (request.POST.get("mp_holder") or "").strip()[:80]
         complex_obj.mp_link = mp_link
+        if clear_token:
+            complex_obj.mp_access_token = ""
+        elif token_raw:
+            complex_obj.mp_access_token = token_raw
         complex_obj.whatsapp_phone = (request.POST.get("whatsapp_phone") or "").strip()[:40]
         complex_obj.whatsapp_apikey = (request.POST.get("whatsapp_apikey") or "").strip()[:60]
         complex_obj.save(
@@ -2832,11 +3310,20 @@ def panel_horarios_accion(request):
                 "mp_alias",
                 "mp_holder",
                 "mp_link",
+                "mp_access_token_encrypted",
                 "whatsapp_phone",
                 "whatsapp_apikey",
             ]
         )
-        messages.success(request, "Ajustes del turnero guardados.")
+        if complex_obj.has_mp_token and complex_obj.booking_price > 0:
+            messages.success(
+                request,
+                "Ajustes guardados. El cobro online de la seña quedó activo.",
+            )
+        elif token_raw or clear_token:
+            messages.success(request, "Ajustes guardados.")
+        else:
+            messages.success(request, "Ajustes del turnero guardados.")
         return redirect(ajustes_back)
 
     else:

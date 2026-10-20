@@ -408,6 +408,10 @@ body.padel-page {
 .form-grid--wide { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .form-grid label { display: grid; gap: .35rem; font-weight: 650; }
 .form-grid input, .form-grid select { width: 100%; min-height: 44px; }
+.form-grid > h3, .form-grid > p { grid-column: 1 / -1; }
+.checkbox-row { display: flex; align-items: center; gap: .55rem; font-weight: 500; }
+.checkbox-row input { width: auto; min-height: 0; }
+.js-hold-countdown { font-weight: 650; color: var(--ps-text); }
 .form-actions { display: flex; gap: .6rem; flex-wrap: wrap; grid-column: 1 / -1; }
 .inline-form { display: inline-flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: 0; }
 .inline-form select { min-height: 42px; }

@@ -147,6 +147,12 @@ def notify_court_booking(booking) -> None:
         lines.append(f"Nota: {booking.note}")
     if booking.price and booking.price > 0:
         lines.append(f"Precio: ${booking.price}")
+    if booking.deposit_amount and booking.deposit_amount > 0:
+        lines.append(f"Seña: ${booking.deposit_amount} ({'abonada' if booking.is_paid else 'pendiente'})")
+        if booking.balance_paid:
+            lines.append("Saldo en el club: abonado")
+        else:
+            lines.append(f"Saldo en el club: ${booking.balance_amount}")
     lines.append(f"Código: {booking.code}")
     text = "Pádel Server: nueva reserva de cancha.\n" + "\n".join(lines)
     _send_whatsapp(

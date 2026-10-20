@@ -8,7 +8,12 @@
   {% if board %}
     <p class="muted">
       Elegí una cancha y un horario libre. Los turnos duran {{ board.config.slot_minutes }} minutos.
-      {% if selected_complex.booking_price > 0 %}Precio del turno: ${{ selected_complex.booking_price|floatformat:"-2" }}.{% endif %}
+      {% if selected_complex.booking_price > 0 %}
+        Precio del turno: ${{ selected_complex.booking_price|floatformat:"-2" }}.
+        {% if online_payment %}
+          Se paga una seña del {{ deposit_percent }}% (${{ deposit_preview|floatformat:"-2" }}) y el saldo en el club.
+        {% endif %}
+      {% endif %}
     </p>
   {% else %}
     <p class="muted">Elegí el complejo y el día para ver los horarios libres.</p>
@@ -125,8 +130,16 @@
       {% if selected_complex.booking_price > 0 %}
         <p class="turno-price">
           Precio del turno: <strong>${{ selected_complex.booking_price|floatformat:"-2" }}</strong>
-          {% if selected_complex.mp_alias %}· se abona por Mercado Pago (alias {{ selected_complex.mp_alias }}){% endif %}
+          {% if online_payment %}
+            · Seña online: <strong>${{ deposit_preview|floatformat:"-2" }}</strong>
+            · Saldo en el club: ${{ balance_preview|floatformat:"-2" }}
+          {% elif selected_complex.mp_alias %}
+            · se abona por Mercado Pago (alias {{ selected_complex.mp_alias }})
+          {% endif %}
         </p>
+        {% if online_payment %}
+          <p class="help">Te guardamos el horario por {{ hold_minutes }} minutos mientras pagás la seña. El turno se confirma cuando Mercado Pago aprueba el pago.</p>
+        {% endif %}
       {% endif %}
       <form method="post" action="{% url 'turno_reservar' %}" class="form-grid">
         {% csrf_token %}
@@ -144,9 +157,14 @@
           <input type="text" name="nota" maxlength="140" placeholder="Ej: necesito palas">
         </label>
         <div class="form-actions">
-          <button class="btn btn--primary" type="submit">Confirmar turno</button>
+          <button class="btn btn--primary" type="submit">
+            {% if online_payment %}Reservar y pagar la seña{% else %}Confirmar turno{% endif %}
+          </button>
           <a class="btn btn--secondary" href="{% url 'turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}">Elegir otro horario</a>
         </div>
+        {% if online_payment %}
+          <p class="help">Al reservar te guardamos el horario y te llevamos a Mercado Pago para pagar la seña. Si no se acredita en {{ hold_minutes }} minutos, se libera.</p>
+        {% endif %}
       </form>
     </section>
   {% endif %}

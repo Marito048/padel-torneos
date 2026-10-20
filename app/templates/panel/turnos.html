@@ -40,6 +40,7 @@
     <span class="turnos-stat"><span class="turnos-stat__label">Precio vigente</span><strong>{% if selected_complex.booking_price > 0 %}${{ selected_complex.booking_price|floatformat:"-2" }}{% else %}sin precio{% endif %}</strong></span>
     <span class="turnos-stat"><span class="turnos-stat__label">Reservado del día</span><strong>${{ day_total|floatformat:"-2" }}</strong></span>
     <span class="turnos-stat"><span class="turnos-stat__label">Cobrado del día</span><strong>${{ day_paid|floatformat:"-2" }}</strong></span>
+    <span class="turnos-stat"><span class="turnos-stat__label">Saldo en cancha</span><strong>${{ day_balance|floatformat:"-2" }}</strong></span>
   </div>
 
   {% if board and board.config and not board.config.is_open %}
@@ -67,7 +68,11 @@
                       {% if cell.booking.note %}<span class="slot-note">{{ cell.booking.note }}</span>{% endif %}
                     {% else %}
                       <span class="slot slot--busy">{{ cell.booking.customer_name|default:"Reservado" }}</span>
-                      {% if cell.booking.customer_phone %}<span class="slot-note">{{ cell.booking.customer_phone }}</span>{% endif %}
+                      {% if cell.booking.status == "pending_payment" %}
+                        <span class="slot-note">Seña pendiente</span>
+                      {% elif cell.booking.customer_phone %}
+                        <span class="slot-note">{{ cell.booking.customer_phone }}</span>
+                      {% endif %}
                     {% endif %}
                     <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Liberar este horario?">
                       {% csrf_token %}
@@ -162,9 +167,13 @@
             <td>{{ booking.start_time|time:"H:i" }} a {{ booking.end_time|time:"H:i" }}</td>
             <td>{{ booking.court.name }}</td>
             <td>
-              {% if booking.status == "booked" %}<span class="status-pill status-pill--done">Reservado</span>
+              {% if booking.status == "pending_payment" %}<span class="status-pill status-pill--pending">Seña pendiente</span>
+              {% elif booking.status == "booked" %}<span class="status-pill status-pill--done">Reservado</span>
               {% elif booking.status == "blocked" %}<span class="status-pill status-pill--pending">Bloqueado</span>
               {% else %}<span class="status-pill status-pill--pending">Cancelado</span>{% endif %}
+              {% if booking.status == "pending_payment" and booking.payment_expires_at %}
+                <span class="slot-note">Vence {{ booking.payment_expires_at|time:"H:i" }}</span>
+              {% endif %}
             </td>
             <td>
               {{ booking.customer_name|default:"—" }}
@@ -172,10 +181,22 @@
             </td>
             <td>{% if booking.price > 0 %}${{ booking.price|floatformat:"-2" }}{% else %}—{% endif %}</td>
             <td>
-              {% if booking.status == "booked" %}
-                {% if booking.is_paid %}<span class="status-pill status-pill--done">Abonado</span>
-                {% else %}<span class="status-pill status-pill--pending">Pendiente</span>{% endif %}
-              {% else %}—{% endif %}
+              {% if booking.status == "pending_payment" %}
+                <span class="status-pill status-pill--pending">Seña ${{ booking.deposit_amount|floatformat:"-2" }}</span>
+              {% elif booking.status == "booked" %}
+                {% if booking.is_paid %}
+                  {% if booking.balance_paid %}
+                    <span class="status-pill status-pill--done">Abonado</span>
+                  {% else %}
+                    <span class="status-pill status-pill--done">{% if booking.deposit_amount > 0 %}Seña abonada{% else %}Abonado{% endif %}</span>
+                    {% if booking.balance_amount > 0 %}
+                      <span class="slot-note">Saldo ${{ booking.balance_amount|floatformat:"-2" }} en club</span>
+                    {% endif %}
+                  {% endif %}
+                {% else %}
+                  <span class="status-pill status-pill--pending">Pendiente</span>
+                {% endif %}
+              {% elif booking.status == "blocked" %}—{% else %}—{% endif %}
             </td>
             <td>{{ booking.get_source_display }}{% if booking.created_by %} ({{ booking.created_by.username }}){% endif %}</td>
             <td>{{ booking.note|default:"—" }}</td>
@@ -184,14 +205,14 @@
                 {% if booking.status == "booked" and booking.wa_url %}
                   <a class="btn btn--xs btn--whatsapp" href="{{ booking.wa_url }}" target="_blank" rel="noopener">Avisar</a>
                 {% endif %}
-                {% if booking.status == "booked" %}
+                {% if booking.status == "booked" or booking.status == "pending_payment" %}
                   <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form">
                     {% csrf_token %}
                     <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
                     <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
-                    <input type="hidden" name="accion" value="{% if booking.is_paid %}marcar_pendiente{% else %}marcar_pagado{% endif %}">
+                    <input type="hidden" name="accion" value="{{ booking.pay_action }}">
                     <input type="hidden" name="turno_id" value="{{ booking.pk }}">
-                    <button class="btn btn--xs btn--secondary" type="submit">{% if booking.is_paid %}Marcar pendiente{% else %}Marcar abonado{% endif %}</button>
+                    <button class="btn btn--xs btn--secondary" type="submit">{{ booking.pay_label }}</button>
                   </form>
                 {% endif %}
                 {% if booking.status != "cancelled" %}

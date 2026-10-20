@@ -8,7 +8,9 @@
 </section>
 
 <article class="padel-card">
-  {% if booking.status == "booked" %}
+  {% if booking.status == "pending_payment" %}
+    <p><span class="status-pill status-pill--pending">Seña pendiente</span></p>
+  {% elif booking.status == "booked" %}
     <p><span class="status-pill status-pill--done">Reservado</span></p>
   {% elif booking.status == "blocked" %}
     <p><span class="status-pill status-pill--pending">Bloqueado</span></p>
@@ -34,11 +36,60 @@
   </div>
 </article>
 
-{% if booking.status == "booked" and booking.price > 0 %}
+{% if booking.price > 0 %}
   <article class="padel-card">
-    <h2>Pago del turno: ${{ booking.price|floatformat:"-2" }}</h2>
+    {% if booking.deposit_amount > 0 %}
+      <h2>Seña del turno: ${{ booking.deposit_amount|floatformat:"-2" }}</h2>
+      <p class="muted">
+        Precio total: ${{ booking.price|floatformat:"-2" }}
+        · Saldo en el club: ${{ booking.balance_amount|floatformat:"-2" }}
+      </p>
+    {% else %}
+      <h2>Pago del turno: ${{ booking.price|floatformat:"-2" }}</h2>
+    {% endif %}
+
     {% if booking.is_paid %}
-      <p><span class="status-pill status-pill--done">Abonado</span> ¡Gracias!</p>
+      {% if booking.deposit_amount > 0 %}
+        {% if booking.balance_paid %}
+          <p><span class="status-pill status-pill--done">Turno abonado</span> ¡Gracias!</p>
+          <p class="muted">La seña y el saldo del club quedaron registrados como cobrados.</p>
+        {% else %}
+          <p><span class="status-pill status-pill--done">Seña abonada</span> ¡Gracias!</p>
+        {% endif %}
+        {% if booking.payment_status == "approved_conflict" %}
+          <p class="alert alert--error">Mercado Pago acreditó el pago, pero el horario ya no estaba disponible. Contactá al complejo para reubicarte o pedir la devolución.</p>
+        {% endif %}
+        {% if booking.status == "cancelled" %}
+          <p class="alert alert--error">El turno está cancelado. Si ya pagaste la seña, coordiná la devolución con el complejo.</p>
+        {% endif %}
+      {% else %}
+        <p><span class="status-pill status-pill--done">Abonado</span> ¡Gracias!</p>
+        {% if booking.status == "cancelled" %}
+          <p class="alert alert--error">El turno está cancelado. Si ya pagaste, coordiná la devolución con el complejo.</p>
+        {% endif %}
+      {% endif %}
+    {% elif booking.status == "pending_payment" %}
+      <p><span class="status-pill status-pill--pending">Seña pendiente</span></p>
+      {% if booking.complex.has_mp_token %}
+        {% if booking.payment_expires_at %}
+          <p class="muted">
+            Te guardamos el horario hasta las {{ booking.payment_expires_at|time:"H:i" }}.
+            <span class="js-hold-countdown" data-hold-expires="{{ booking.payment_expires_at|date:'c' }}"></span>
+          </p>
+        {% endif %}
+        <p>
+          <a class="btn btn--primary" href="{% url 'turno_pagar' booking.code %}">Pagar seña con Mercado Pago</a>
+        </p>
+        <p class="help">Si no se acredita la seña antes del vencimiento, el horario se libera automáticamente. El saldo restante se paga en el club.</p>
+      {% else %}
+        <p class="help">El complejo todavía no habilitó el pago online. Coordiná la seña por WhatsApp o al llegar.</p>
+      {% endif %}
+    {% elif booking.status == "cancelled" %}
+      {% if booking.payment_status == "expired" %}
+        <p class="alert alert--error">La seña venció y el horario se liberó. Podés elegir otro turno.</p>
+      {% else %}
+        <p class="alert alert--error">El turno está cancelado; no hace falta pagar la seña.</p>
+      {% endif %}
     {% else %}
       <p><span class="status-pill status-pill--pending">Pago pendiente</span></p>
       {% if booking.complex.mp_alias or booking.complex.mp_link %}
@@ -74,6 +125,23 @@
         setTimeout(function () { button.textContent = original; }, 1500);
       });
     });
+  });
+
+  document.querySelectorAll("[data-hold-expires]").forEach(function (node) {
+    var end = new Date(node.getAttribute("data-hold-expires"));
+    if (isNaN(end.getTime())) { return; }
+    function tick() {
+      var remaining = end.getTime() - Date.now();
+      if (remaining <= 0) {
+        node.textContent = "La seña venció; el horario se libera al actualizar.";
+        return;
+      }
+      var minutes = Math.floor(remaining / 60000);
+      var seconds = Math.floor((remaining % 60000) / 1000);
+      node.textContent = "Quedan " + minutes + ":" + String(seconds).padStart(2, "0") + " minutos.";
+    }
+    tick();
+    setInterval(tick, 1000);
   });
 </script>
 {% endblock %}

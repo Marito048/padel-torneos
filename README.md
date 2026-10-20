@@ -9,10 +9,13 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
 - **Turnos de cancha**: página pública **/turnos/** para reservar sin registrarse (nombre y
   WhatsApp), con **calendario mensual** para elegir el día (días cerrados y fuera de la ventana
   atenuados, «hoy» marcado, navegación de meses, ventana de 60 días) y grilla de horarios libres
-  por cancha, código de confirmación y cancelación online. El **precio del turno** y los datos de
-  cobro (**alias/CVU, titular y link de Mercado Pago**) se configuran por complejo en **Turnos →
-  Precio y avisos** y se muestran al reservar y confirmar; el panel marca cada turno como
-  **abonado/pendiente** y lleva los totales del día. Cada reserva puede avisarse por **WhatsApp**:
+  por cancha, código de confirmación y cancelación online. El **precio del turno**, la **seña
+  online** y los datos de cobro manual (**alias/CVU, titular y link de Mercado Pago**) se
+  configuran por complejo en **Turnos → Precio y avisos**. Con un **access token de Mercado Pago**
+  cargado, la reserva pública retiene el horario unos minutos y cobra una **seña del 30%** con
+  **Checkout Pro**; el turno se confirma solo cuando Mercado Pago aprueba el pago y el **saldo se
+  paga en el club**. Sin token se mantiene el cobro manual. El panel registra la seña y el saldo
+  por separado, permite marcar ambos como cobrados y lleva los totales del día. Cada reserva puede avisarse por **WhatsApp**:
   el cliente al complejo desde la confirmación y el panel al cliente con el botón «Avisar»
   (wa.me), y con CallMeBot configurado el complejo recibe el aviso automático. En el panel,
   **Turnos** muestra la agenda del día, permite cargar reservas manuales, bloquear horarios
@@ -193,6 +196,37 @@ Para Google OAuth:
    y la cuenta se crea al ingresar con Google. El registro abierto queda deshabilitado.
 4. Si cambiás de túnel o dominio (ngrok, Tailscale Funnel, dominio propio), actualizá el origen
    y el URI de redirección en Google Cloud Console.
+
+## Cobro online de la seña (Mercado Pago Checkout Pro)
+
+El turnero puede cobrar una **seña obligatoria del 30%** al reservar desde la página pública. El
+saldo restante se paga en el club. Cada complejo usa **su propia cuenta de Mercado Pago**.
+
+1. Entrar a [Mercado Pago Developers](https://www.mercadopago.com.ar/developers/panel/app), crear
+   una aplicación y copiar el **Access token** de producción (`APP_USR-...`). Para probar sin
+   cobrar de verdad se puede usar un token de prueba (`TEST-...`) y usuarios de prueba de MP.
+2. En el panel, ir a **Turnos → Precio y avisos**, cargar el token y guardar. El token se guarda
+   **cifrado** con una clave derivada del `SECRET_KEY` y no se vuelve a mostrar. Si se cambia el
+   `SECRET_KEY`, hay que volver a cargarlo.
+3. El precio del turno debe ser mayor a 0. Al reservar, el sistema:
+   - crea una **pre-reserva** y retiene el horario durante `BOOKING_HOLD_MINUTES` (15 por defecto);
+   - crea una preferencia de Checkout Pro por la seña y redirige a Mercado Pago;
+   - confirma el turno cuando el pago aparece **aprobado**, consultando el pago contra la API
+     (webhook y vuelta del checkout, sin confiar en los parámetros de la URL);
+   - libera el horario automáticamente si la seña no se acredita antes del vencimiento.
+4. El panel muestra la seña y el saldo por separado. «Cobrar saldo» registra el pago en el club;
+   «Marcar pendiente» lo revierte. Los totales del día suman seña + saldo cobrado.
+5. Sin token cargado se mantiene el flujo manual: el turno se reserva y el cliente ve el
+   alias/CVU o el link de Mercado Pago para coordinar el pago.
+
+La preferencia incluye la `notification_url` pública del complejo. Por eso el sitio debe estar
+expuesto con **HTTPS** (Tailscale Funnel o un dominio propio); Mercado Pago no puede llamar a
+`localhost`. El webhook sólo se usa como aviso: siempre se consulta el pago con el token del
+complejo y se valida la referencia y el monto de la seña. Los medios de pago en efectivo
+(Rapipago/Pago Fácil) y cajero se excluyen porque la retención es corta.
+
+Variables opcionales en `.env`: `BOOKING_DEPOSIT_PERCENT=30`, `BOOKING_HOLD_MINUTES=15` y
+`MERCADO_PAGO_TIMEOUT=15`.
 
 ## Email saliente (opcional)
 

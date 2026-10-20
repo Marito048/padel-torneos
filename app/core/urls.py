@@ -136,6 +136,13 @@ urlpatterns = [
     # Turnos de cancha (público, sin registro).
     path("turnos/", views.turnos, name="turnos"),
     path("turnos/reservar/", views.turno_reservar, name="turno_reservar"),
+    path(
+        "turnos/pago/mercadopago/<slug:slug>/",
+        views.turno_pago_webhook,
+        name="turno_pago_webhook",
+    ),
+    path("turnos/<str:code>/pagar/", views.turno_pagar, name="turno_pagar"),
+    path("turnos/<str:code>/pago/retorno/", views.turno_pago_retorno, name="turno_pago_retorno"),
     path("turnos/confirmado/<str:code>/", views.turno_confirmado, name="turno_confirmado"),
     path("turnos/cancelar/<str:code>/", views.turno_cancelar, name="turno_cancelar"),
 ]

@@ -1,12 +1,30 @@
+import base64
+import hashlib
+import logging
 import re
 import secrets
 from datetime import time as dt_time
+from decimal import Decimal
 
+from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 from django.db.models.functions import Greatest, Least, Lower
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
+
+def _token_cipher() -> Fernet:
+    """Cifra las credenciales de cobro con una clave derivada del SECRET_KEY.
+
+    No se guardan tokens de Mercado Pago en texto plano. Si cambia el
+    ``SECRET_KEY`` del despliegue hay que volver a cargar el token.
+    """
+    digest = hashlib.sha256(f"padel-server:{settings.SECRET_KEY}".encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
 
 PLAYOFF_STAGE_ORDER = {
     "round_of_64": 1,
@@ -94,6 +112,11 @@ class Complex(models.Model):
     mp_alias = models.CharField("Alias o CVU de Mercado Pago", max_length=80, blank=True)
     mp_holder = models.CharField("Titular de la cuenta", max_length=80, blank=True)
     mp_link = models.URLField("Link de pago de Mercado Pago", max_length=300, blank=True)
+    # Checkout Pro: el token de producción/prueba se guarda cifrado. No se
+    # muestra en formularios ni se registra en logs.
+    mp_access_token_encrypted = models.TextField(
+        "Token de Mercado Pago (cifrado)", blank=True, editable=False
+    )
     whatsapp_phone = models.CharField(
         "WhatsApp del complejo", max_length=40, blank=True,
         help_text="Con código de país (ej. 5492215551234). Recibe el aviso de cada reserva.",
@@ -111,6 +134,28 @@ class Complex(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def has_mp_token(self) -> bool:
+        return bool(self.mp_access_token)
+
+    @property
+    def mp_access_token(self) -> str:
+        if not self.mp_access_token_encrypted:
+            return ""
+        try:
+            return _token_cipher().decrypt(self.mp_access_token_encrypted.encode("utf-8")).decode("utf-8")
+        except (InvalidToken, ValueError, TypeError):
+            logger.warning("No se pudo descifrar el token de Mercado Pago del complejo %s", self.pk)
+            return ""
+
+    @mp_access_token.setter
+    def mp_access_token(self, value: str | None) -> None:
+        token = (value or "").strip()
+        if not token:
+            self.mp_access_token_encrypted = ""
+            return
+        self.mp_access_token_encrypted = _token_cipher().encrypt(token.encode("utf-8")).decode("utf-8")
 
 
 class Invitation(models.Model):
@@ -365,12 +410,14 @@ class CourtDateOverride(models.Model):
 class CourtBooking(models.Model):
     """Turno de una cancha, tomado por el público o cargado desde el panel.
 
+    - ``pending_payment``: pre-reserva pública esperando la seña online.
     - ``booked``: turno reservado (con o sin datos de cliente).
     - ``blocked``: horario bloqueado a mano (mantenimiento, torneo, etc.).
     - ``cancelled``: libera el horario y queda como historial.
     """
 
     STATUS = [
+        ("pending_payment", "Seña pendiente"),
         ("booked", "Reservado"),
         ("blocked", "Bloqueado"),
         ("cancelled", "Cancelado"),
@@ -378,6 +425,19 @@ class CourtBooking(models.Model):
     SOURCE = [
         ("public", "Público"),
         ("panel", "Panel"),
+    ]
+    PAYMENT_STATUS = [
+        ("pending", "Pendiente"),
+        ("in_process", "En proceso"),
+        ("approved", "Aprobado"),
+        ("rejected", "Rechazado"),
+        ("cancelled", "Cancelado"),
+        ("refunded", "Reembolsado"),
+        ("charged_back", "Contracargo"),
+        ("expired", "Vencido"),
+        ("amount_mismatch", "Monto distinto"),
+        ("approved_conflict", "Aprobado sin turno"),
+        ("manual", "Cobro manual"),
     ]
 
     complex = models.ForeignKey(
@@ -395,7 +455,7 @@ class CourtBooking(models.Model):
     date = models.DateField("Fecha")
     start_time = models.TimeField("Desde")
     end_time = models.TimeField("Hasta")
-    status = models.CharField("Estado", max_length=10, choices=STATUS, default="booked")
+    status = models.CharField("Estado", max_length=20, choices=STATUS, default="booked")
     customer_name = models.CharField("Cliente", max_length=80, blank=True)
     customer_phone = models.CharField("Teléfono", max_length=40, blank=True)
     note = models.CharField("Nota", max_length=140, blank=True)
@@ -404,6 +464,21 @@ class CourtBooking(models.Model):
         help_text="Precio vigente al momento de reservar.",
     )
     is_paid = models.BooleanField("Abonado", default=False)
+    deposit_amount = models.DecimalField(
+        "Seña", max_digits=10, decimal_places=2, default=0,
+        help_text="Importe de la seña cobrada al reservar. El saldo se paga en el club.",
+    )
+    payment_provider = models.CharField("Medio de pago", max_length=20, blank=True)
+    payment_preference_id = models.CharField("Preferencia de pago", max_length=80, blank=True)
+    payment_init_point = models.URLField("Checkout de pago", max_length=500, blank=True)
+    payment_id = models.CharField("ID de pago", max_length=64, blank=True, db_index=True)
+    payment_status = models.CharField(
+        "Estado del pago", max_length=20, choices=PAYMENT_STATUS, blank=True
+    )
+    payment_expires_at = models.DateTimeField("Vence la seña", null=True, blank=True, db_index=True)
+    paid_at = models.DateTimeField("Pagado", null=True, blank=True)
+    balance_paid = models.BooleanField("Saldo abonado en el club", default=False)
+    balance_paid_at = models.DateTimeField("Saldo pagado", null=True, blank=True)
     code = models.CharField("Código", max_length=12, unique=True, blank=True)
     source = models.CharField("Origen", max_length=10, choices=SOURCE, default="public")
     created_by = models.ForeignKey(
@@ -424,8 +499,13 @@ class CourtBooking(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["court", "date", "start_time"],
-                condition=Q(status__in=["booked", "blocked"]),
+                condition=Q(status__in=["pending_payment", "booked", "blocked"]),
                 name="unique_active_booking_slot",
+            ),
+            models.UniqueConstraint(
+                fields=["payment_id"],
+                condition=~Q(payment_id=""),
+                name="unique_court_booking_payment_id",
             ),
         ]
 
@@ -436,6 +516,48 @@ class CourtBooking(models.Model):
         if not self.code:
             self.code = self.generate_code()
         super().save(*args, **kwargs)
+
+    @property
+    def paid_amount(self) -> Decimal:
+        """Total cobrado: seña, saldo en el club o el total de un turno manual/viejo."""
+        price = self.price or Decimal("0")
+        if not self.deposit_amount:
+            return price if self.is_paid else Decimal("0")
+        paid = self.deposit_amount if self.is_paid else Decimal("0")
+        if self.balance_paid:
+            paid += max(price - self.deposit_amount, Decimal("0"))
+        return min(paid, price)
+
+    @property
+    def balance_amount(self) -> Decimal:
+        """Saldo que falta pagar en el club (0 si ya se cobró o no hay saldo)."""
+        price = self.price or Decimal("0")
+        if price <= 0 or self.balance_paid:
+            return Decimal("0")
+        # Turnos anteriores a la seña o cargados a mano: si están abonados, se cobró todo.
+        if self.is_paid and not self.deposit_amount:
+            return Decimal("0")
+        return max(price - (self.deposit_amount or Decimal("0")), Decimal("0"))
+
+    @property
+    def hold_expired(self) -> bool:
+        return bool(
+            self.status == "pending_payment"
+            and self.payment_expires_at
+            and self.payment_expires_at <= timezone.now()
+        )
+
+    @classmethod
+    def expire_pending(cls, now=None) -> int:
+        """Libera las pre-reservas cuya seña venció."""
+        now = now or timezone.now()
+        return cls.objects.filter(
+            status="pending_payment", payment_expires_at__lt=now
+        ).update(
+            status="cancelled",
+            cancelled_at=now,
+            payment_status="expired",
+        )
 
     @staticmethod
     def generate_code() -> str:

@@ -189,6 +189,16 @@ SIGNUP_ALERT_EMAIL = env("SIGNUP_ALERT_EMAIL", default="")
 WHATSAPP_ALERT_PHONE = env("WHATSAPP_ALERT_PHONE", default="")
 WHATSAPP_ALERT_APIKEY = env("WHATSAPP_ALERT_APIKEY", default="")
 
+# ---------------------------------------------------------------------------
+# Cobro de la seña de turnos con Mercado Pago Checkout Pro
+# ---------------------------------------------------------------------------
+# La seña se cobra al reservar; el saldo queda para pagar en el club. El token
+# de cada complejo se carga desde el panel (se guarda cifrado en la base).
+BOOKING_DEPOSIT_PERCENT = env.int("BOOKING_DEPOSIT_PERCENT", default=30)
+BOOKING_HOLD_MINUTES = env.int("BOOKING_HOLD_MINUTES", default=15)
+MERCADO_PAGO_API_BASE = env("MERCADO_PAGO_API_BASE", default="https://api.mercadopago.com")
+MERCADO_PAGO_TIMEOUT = env.int("MERCADO_PAGO_TIMEOUT", default=15)
+
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
