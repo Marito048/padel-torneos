@@ -183,6 +183,9 @@
             <td>
               {% if booking.status == "pending_payment" %}
                 <span class="status-pill status-pill--pending">Seña ${{ booking.deposit_amount|floatformat:"-2" }}</span>
+                {% if booking.balance_amount > 0 %}
+                  <span class="slot-note">Saldo ${{ booking.balance_amount|floatformat:"-2" }} en club</span>
+                {% endif %}
               {% elif booking.status == "booked" %}
                 {% if booking.is_paid %}
                   {% if booking.balance_paid %}
@@ -194,7 +197,10 @@
                     {% endif %}
                   {% endif %}
                 {% else %}
-                  <span class="status-pill status-pill--pending">Pendiente</span>
+                  <span class="status-pill status-pill--pending">{% if booking.deposit_amount > 0 %}Seña ${{ booking.deposit_amount|floatformat:"-2" }} pendiente{% else %}Pendiente{% endif %}</span>
+                  {% if booking.deposit_amount > 0 and booking.balance_amount > 0 %}
+                    <span class="slot-note">Saldo ${{ booking.balance_amount|floatformat:"-2" }} en club</span>
+                  {% endif %}
                 {% endif %}
               {% elif booking.status == "blocked" %}—{% else %}—{% endif %}
             </td>

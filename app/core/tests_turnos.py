@@ -877,12 +877,26 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
             "accion": "marcar_pagado",
             "turno_id": booking.pk,
         }
+        response = self.client.get(
+            reverse("panel_turnos"),
+            {"complejo": self.complex.slug, "fecha": self.day.isoformat()},
+        )
+        self.assertContains(response, "Seña $2400")
+        self.assertContains(response, "Saldo $5600 en club")
+
         self.client.post(reverse("panel_turno_accion"), base)
         booking.refresh_from_db()
         self.assertTrue(booking.is_paid)
         self.assertFalse(booking.balance_paid)
         self.assertEqual(booking.paid_amount, Decimal("2400.00"))
         self.assertEqual(booking.balance_amount, Decimal("5600.00"))
+
+        response = self.client.get(
+            reverse("panel_turnos"),
+            {"complejo": self.complex.slug, "fecha": self.day.isoformat()},
+        )
+        self.assertContains(response, "Seña abonada")
+        self.assertContains(response, "Saldo $5600 en club")
 
         self.client.post(reverse("panel_turno_accion"), base)
         booking.refresh_from_db()

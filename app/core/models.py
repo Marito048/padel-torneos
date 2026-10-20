@@ -16,6 +16,7 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
+
 def _token_cipher() -> Fernet:
     """Cifra las credenciales de cobro con una clave derivada del SECRET_KEY.
 
