@@ -233,6 +233,52 @@ bajo systemd.
   con el dominio fijo `https://brunch-unfitted-guacamole.ngrok-free.dev` (los formularios funcionan
   porque el origen coincide con el host).
 
+## Railway
+
+El repo ya trae lo necesario: `railway.json`, `nixpacks.toml`, `requirements.txt` en la raíz
+(encamina a `app/requirements.txt`) y el módulo de ajustes `config/settings/railway.py`.
+El proyecto Django vive en `app/`, y todos los comandos de despliegue entran a ese directorio.
+
+### 1. Crear el proyecto
+Dashboard de Railway → **New Project → Deploy from GitHub Repo** → elegir `padel-torneos`.
+Railway toma `railway.json` (builder Nixpacks) y `nixpacks.toml` (build y start).
+
+### 2. Base de datos
+Agregar el plugin **PostgreSQL** al servicio. Railway inyecta `DATABASE_URL` solo y
+`dj-database-url` la traduce a la config de Django. **Sin este plugin la app arranca con SQLite,
+que en Railway es efímero: los datos se pierden en cada redeploy.**
+
+### 3. Variables de entorno
+Definir en el servicio:
+
+| Variable | Obligatoria | Notas |
+|---|---|---|
+| `SECRET_KEY` | Sí | Clave de Django. Sin ella la app no arranca. |
+| `DATABASE_URL` | Sí | La inyecta el plugin Postgres. |
+| `DJANGO_SUPERUSER_USERNAME` | No | Crea el administrador general al arrancar. |
+| `DJANGO_SUPERUSER_PASSWORD` | No | Junto con la anterior. |
+| `DJANGO_SUPERUSER_EMAIL` | No | |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | No | Solo si querés el login con Google. |
+
+`DJANGO_SETTINGS_MODULE` lo define `nixpacks.toml` como `config.settings.railway`; no hace
+falta tocarlo.
+
+### 4. Superusuario
+`nixpacks.toml` corre `manage.py ensure_superuser` en cada arranque: crea el administrador
+general si no existe. Si el usuario ya existe **no** le pisa la contraseña (poné
+`DJANGO_SUPERUSER_RESET_PASSWORD=1` si querés que la reescriba).
+
+### 5. ¿Qué hace cada cosa?
+- `config/settings/railway.py` hereda de `prod.py` y le suma el dominio público de Railway
+  (`RAILWAY_PUBLIC_DOMAIN`) a `ALLOWED_HOSTS` y `CSRF_TRUSTED_ORIGINS`. Sin esto Django
+  responde 400 a todo y los formularios fallan con 403.
+- El healthcheck apunta a `/admin/login/`.
+- El arranque es `migrate` → `ensure_superuser` → `gunicorn config.wsgi --bind 0.0.0.0:$PORT`.
+
+### 6. Login con Google
+El callback cambia de dominio: registrar en Google Cloud Console
+`https://<tu-dominio-railway>/cuentas/google/login/callback/` como URI de redirección autorizada.
+
 ## Backups
 
 Los respaldos SQL viven en `backups/`. Antes de las migraciones estructurales se generaron

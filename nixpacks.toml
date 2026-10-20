@@ -1,0 +1,22 @@
+# Despliegue en Railway (Nixpacks).
+#
+# El proyecto Django vive en app/, no en la raíz del repo, así que todos los
+# comandos entran a ese directorio antes de tocar manage.py.
+#
+# La variable DJANGO_SETTINGS_MODULE apunta al módulo de ajustes específico de
+# Railway (app/config/settings/railway.py), que hereda de prod y agrega el
+# dominio público que Railway inyecta en RAILWAY_PUBLIC_DOMAIN.
+
+[variables]
+DJANGO_SETTINGS_MODULE = "config.settings.railway"
+PYTHONUNBUFFERED = "1"
+
+[phases.build]
+cmds = [
+  "cd app && python manage.py collectstatic --noinput",
+]
+
+[phases.start]
+cmds = [
+  "cd app && python manage.py migrate --noinput && python manage.py ensure_superuser && gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 3 --timeout 60",
+]

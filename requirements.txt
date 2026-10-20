@@ -1,0 +1,4 @@
+# El proyecto Django vive en app/, no en la raíz del repo.
+# Este archivo existe para que Nixpacks (Railway) detecte Python e instale
+# las dependencias reales, que están en app/requirements.txt.
+-r app/requirements.txt

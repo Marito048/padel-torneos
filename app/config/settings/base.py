@@ -1,4 +1,5 @@
 from pathlib import Path
+import warnings
 
 import environ
 
@@ -72,7 +73,28 @@ TEMPLATES = [
     },
 ]
 
-DATABASES = {"default": env.db("DATABASE_URL")}
+# URL de la base de datos. En Railway la inyecta el plugin de Postgres
+# (DATABASE_URL). Si no está definida se cae a un SQLite local para que el
+# build (collectstatic) no reviente; ojo: en Railway el filesystem es
+# efímero, así que los datos se pierden en cada redeploy.
+DATABASE_URL = env("DATABASE_URL", default="")
+if DATABASE_URL:
+    DATABASES = {"default": env.db("DATABASE_URL")}
+else:
+    warnings.warn(
+        "DATABASE_URL no esta definido: se usa SQLite local. "
+        "En Railway eso es efimero (los datos se pierden en cada redeploy): "
+        "agrega el plugin Postgres.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    # Ruta absoluta: no depende del directorio desde el que se corra manage.py.
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": str(BASE_DIR / "db.sqlite3"),
+        }
+    }
 
 # Contraseñas: sólo 8 caracteres como mínimo (sin exigir mayúsculas, números
 # ni símbolos): es una app de club, la idea es que nadie se complique.
