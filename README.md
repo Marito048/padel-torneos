@@ -272,8 +272,14 @@ general si no existe. Si el usuario ya existe **no** le pisa la contraseña (pon
 - `config/settings/railway.py` hereda de `prod.py` y le suma el dominio público de Railway
   (`RAILWAY_PUBLIC_DOMAIN`) a `ALLOWED_HOSTS` y `CSRF_TRUSTED_ORIGINS`. Sin esto Django
   responde 400 a todo y los formularios fallan con 403.
+- `config/settings/build.py` se usa sólo en la fase de build (collectstatic): no necesita
+  `SECRET_KEY` ni `DATABASE_URL`, así que el build no depende de que estén cargados.
 - El healthcheck apunta a `/admin/login/`.
 - El arranque es `migrate` → `ensure_superuser` → `gunicorn config.wsgi --bind 0.0.0.0:$PORT`.
+
+> En `nixpacks.toml` el comando de arranque va en `[start] cmd`, **no** en `[phases.start] cmds`:
+> lo segundo define una fase que corre durante el build (y como queda colgada en gunicorn,
+> el build nunca termina y Nixpacks falla con "No start command could be found").
 
 ### 6. Login con Google
 El callback cambia de dominio: registrar en Google Cloud Console
