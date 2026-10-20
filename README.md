@@ -244,12 +244,24 @@ Dashboard de Railway → **New Project → Deploy from GitHub Repo** → elegir 
 Railway toma `railway.json` (builder Nixpacks) y `nixpacks.toml` (build y start).
 
 ### 2. Base de datos
-Agregar el plugin **PostgreSQL** al servicio. Railway inyecta `DATABASE_URL` solo y
-`dj-database-url` la traduce a la config de Django. **Sin este plugin la app arranca con SQLite,
-que en Railway es efímero: los datos se pierden en cada redeploy.**
+Agregar el plugin **PostgreSQL** al servicio.
 
-El plugin también expone `PGSSLMODE=require`; `base.py` lo pasa a `OPTIONS.sslmode` para que
-psycopg use SSL contra el Postgres de Railway (si la URL ya trae `?sslmode=`, esa gana).
+**Railway NO inyecta las variables del plugin solas**: hay que referenciarlas desde el servicio
+de la app. En el servicio `padel-torneos` → **Variables → New Variable → Add Reference**:
+
+```
+DATABASE_URL = ${{Postgres.DATABASE_URL}}
+```
+
+(`Postgres` es el nombre exacto del servicio de base; es case-sensitive.)
+
+Sin esa referencia la app **no arranca**: `config/settings/railway.py` corta el arranque con un
+error explícito, en vez de caerse silenciosamente a SQLite (que en Railway es efímero y perdería
+los datos en cada redeploy).
+
+`dj-database-url` traduce la URL a la config de Django. Si el plugin expone `PGSSLMODE`,
+`base.py` lo pasa a `OPTIONS.sslmode` para que psycopg use SSL (si la URL ya trae `?sslmode=`,
+esa gana).
 
 ### 3. Variables de entorno
 Definir en el servicio:

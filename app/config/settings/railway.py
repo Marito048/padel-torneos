@@ -12,7 +12,21 @@ suma lo que Railway necesita:
 
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 from .prod import *  # noqa: F401,F403
+
+# En Railway la base tiene que ser SIEMPRE el Postgres del plugin. Si
+# faltara DATABASE_URL, base.py caeria a SQLite, que en Railway es efimero:
+# la app arrancaria igual (y el deploy diria "Completed") pero guardando los
+# datos en un disco que se pierde en cada redeploy. Mejor fallar aca.
+if not os.environ.get("DATABASE_URL", "").strip():
+    raise ImproperlyConfigured(
+        "Falta DATABASE_URL. Agregala como variable de REFERENCIA en el servicio "
+        "padel-torneos (Settings > Variables > New Variable > Add Reference): "
+        "DATABASE_URL = ${{Postgres.DATABASE_URL}}. "
+        "Sin esto la app usaria SQLite, que en Railway es efimero."
+    )
 
 # Railway inyecta RAILWAY_PUBLIC_DOMAIN (el principal) y
 # RAILWAY_STATIC_DOMAINS (lista separada por comas de todos los dominios

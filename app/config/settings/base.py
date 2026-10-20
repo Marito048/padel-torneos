@@ -3,6 +3,7 @@ import os
 import warnings
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -14,7 +15,12 @@ env = environ.Env(
 # Lee .env desde la raiz del proyecto (padel-torneos/.env). En docker se pasa por env_file.
 environ.Env.read_env(BASE_DIR.parent / ".env", overwrite=False)
 
-SECRET_KEY = env("SECRET_KEY")
+SECRET_KEY = env("SECRET_KEY", default="")
+if not SECRET_KEY:
+    raise ImproperlyConfigured(
+        "Falta la variable SECRET_KEY. Definila en el servicio "
+        "(Settings > Variables > New Variable) antes de desplegar."
+    )
 DEBUG = env("DEBUG", default=False)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
