@@ -14,10 +14,10 @@
         <span class="padel-badge">PA</span>
         <span>Pádel Server</span>
       </div>
-      <div class="padel-actions">
+      <div class="padel-actions padel-actions--menu">
         <a class="btn btn--accent" href="{% url 'tournament_create' %}">Crear torneo</a>
-        <a class="btn btn--primary" href="{% url 'panel_turnos' %}">Turnos</a>
-        {% if user.is_staff or user.is_superuser %}<a class="btn btn--secondary" href="{% url 'general_settings' %}">Configuración general</a>{% endif %}
+        <a class="btn btn--info" href="{% url 'panel_turnos' %}">Turnos</a>
+        {% if user.is_staff or user.is_superuser %}<a class="btn btn--dark" href="{% url 'general_settings' %}" aria-label="Configuración general">Configuración</a>{% endif %}
         <form method="post" action="{% url 'account_logout' %}" class="inline-form">{% csrf_token %}<button class="btn btn--secondary" type="submit">Salir</button></form>
       </div>
     </header>

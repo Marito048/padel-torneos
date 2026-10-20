@@ -200,6 +200,11 @@ body.padel-page {
     flex-wrap: wrap;
     margin-top: 1rem;
 }
+/* Menú de inicio del panel: mismos anchos para que los botones queden parejos. */
+.padel-actions--menu > .btn,
+.padel-actions--menu > .inline-form > .btn {
+    min-width: 8.5rem;
+}
 
 .btn {
     border: 0;
@@ -224,6 +229,8 @@ body.padel-page {
 .btn--primary { background: var(--ps-green); color: white; box-shadow: 0 8px 18px rgba(26, 125, 83, 0.24); }
 .btn--accent { background: var(--ps-accent); color: white; }
 .btn--secondary { background: white; color: var(--ps-text); border: 1px solid #d8e1df; }
+.btn--info { background: #2563eb; color: white; }
+.btn--dark { background: var(--ps-text); color: white; }
 .btn--danger { background: var(--ps-danger); color: white; }
 .btn--whatsapp { background: #25d366; color: #05301a; box-shadow: 0 8px 18px rgba(37, 211, 102, 0.28); }
 .btn--whatsapp:hover { color: #05301a; }
