@@ -11,12 +11,67 @@
 </section>
 
 <nav class="settings-nav" aria-label="Secciones de configuración">
-  <a href="#usuarios">Usuarios</a>
-  <a href="#agregar-usuario">Agregar usuario</a>
-  <a href="#complejos">Mis complejos</a>
+  <a class="settings-nav__item" href="#usuarios">
+    <span class="settings-nav__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/>
+      </svg>
+    </span>
+    <span class="settings-nav__text">
+      <span class="settings-nav__label">Usuarios</span>
+      <span class="settings-nav__hint">Cuentas y permisos</span>
+    </span>
+    <span class="settings-nav__count">{{ rows|length }}</span>
+  </a>
+  <a class="settings-nav__item" href="#agregar-usuario">
+    <span class="settings-nav__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-1.5a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM3 20.25a8.25 8.25 0 0 1 16.5 0"/>
+      </svg>
+    </span>
+    <span class="settings-nav__text">
+      <span class="settings-nav__label">Agregar usuario</span>
+      <span class="settings-nav__hint">Nueva cuenta del panel</span>
+    </span>
+    <span class="settings-nav__count settings-nav__count--add" aria-hidden="true">+</span>
+  </a>
+  <a class="settings-nav__item" href="#complejos">
+    <span class="settings-nav__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/>
+      </svg>
+    </span>
+    <span class="settings-nav__text">
+      <span class="settings-nav__label">Mis complejos</span>
+      <span class="settings-nav__hint">Clubes y canchas</span>
+    </span>
+    <span class="settings-nav__count">{{ complexes|length }}</span>
+  </a>
   {% if is_general_admin %}
-    <a href="#solicitudes">Solicitudes</a>
-    <a href="#invitaciones">Invitaciones</a>
+    <a class="settings-nav__item" href="#solicitudes">
+      <span class="settings-nav__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2.25 13.5h3.375c.621 0 1.125.504 1.125 1.125v.75c0 .621.504 1.125 1.125 1.125h6.75c.621 0 1.125-.504 1.125-1.125v-.75c0-.621.504-1.125 1.125-1.125h3.375m-18 0 2.25-6.75A2.25 2.25 0 0 1 7.414 4.5h9.172a2.25 2.25 0 0 1 2.139 1.55l2.25 6.75m-18 0v6.75A2.25 2.25 0 0 0 5.25 21h13.5a2.25 2.25 0 0 0 2.25-2.25V13.5"/>
+        </svg>
+      </span>
+      <span class="settings-nav__text">
+        <span class="settings-nav__label">Solicitudes</span>
+        <span class="settings-nav__hint">Pedidos de registro</span>
+      </span>
+      <span class="settings-nav__count{% if registration_requests %} settings-nav__count--alert{% endif %}">{{ registration_requests|length }}</span>
+    </a>
+    <a class="settings-nav__item" href="#invitaciones">
+      <span class="settings-nav__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75"/>
+        </svg>
+      </span>
+      <span class="settings-nav__text">
+        <span class="settings-nav__label">Invitaciones</span>
+        <span class="settings-nav__hint">Accesos con Google</span>
+      </span>
+      <span class="settings-nav__count">{{ invitations|length }}</span>
+    </a>
   {% endif %}
 </nav>
 
