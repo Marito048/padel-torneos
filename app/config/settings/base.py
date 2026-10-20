@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import warnings
 
 import environ
@@ -80,6 +81,13 @@ TEMPLATES = [
 DATABASE_URL = env("DATABASE_URL", default="")
 if DATABASE_URL:
     DATABASES = {"default": env.db("DATABASE_URL")}
+    # Railway expone PGSSLMODE=require junto a DATABASE_URL, pero la URL no
+    # lo trae en el query string. Se pasa a OPTIONS para que psycopg use SSL
+    # contra el Postgres de Railway en vez de depender del default "prefer".
+    _sslmode = os.environ.get("PGSSLMODE", "").strip()
+    _options = DATABASES["default"].setdefault("OPTIONS", {})
+    if _sslmode and "sslmode" not in _options:
+        _options["sslmode"] = _sslmode
 else:
     warnings.warn(
         "DATABASE_URL no esta definido: se usa SQLite local. "

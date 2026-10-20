@@ -248,6 +248,9 @@ Agregar el plugin **PostgreSQL** al servicio. Railway inyecta `DATABASE_URL` sol
 `dj-database-url` la traduce a la config de Django. **Sin este plugin la app arranca con SQLite,
 que en Railway es efímero: los datos se pierden en cada redeploy.**
 
+El plugin también expone `PGSSLMODE=require`; `base.py` lo pasa a `OPTIONS.sslmode` para que
+psycopg use SSL contra el Postgres de Railway (si la URL ya trae `?sslmode=`, esa gana).
+
 ### 3. Variables de entorno
 Definir en el servicio:
 
