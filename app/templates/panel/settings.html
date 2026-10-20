@@ -10,43 +10,74 @@
   </p>
 </section>
 
-<section class="padel-card" id="complejos">
-  <h2>Mis complejos</h2>
-  <p class="help">
-    Cada usuario del panel administra su propio complejo: creá el tuyo y después armá
-    torneos ahí dentro. Los jugadores se comparten en toda la plataforma; torneos y
-    usuarios quedan separados por complejo.
-  </p>
-  {% if complexes %}
+<nav class="settings-nav" aria-label="Secciones de configuración">
+  <a href="#usuarios">Usuarios</a>
+  <a href="#agregar-usuario">Agregar usuario</a>
+  <a href="#complejos">Mis complejos</a>
+  {% if is_general_admin %}
+    <a href="#solicitudes">Solicitudes</a>
+    <a href="#invitaciones">Invitaciones</a>
+  {% endif %}
+</nav>
+
+<section class="panel-section" id="usuarios">
+  <h2>Usuarios ({{ rows|length }})</h2>
+  <form method="get" class="inline-form" style="margin-bottom: .8rem;">
+    <input type="text" name="q" value="{{ query }}" placeholder="Buscar por usuario, nombre o email…">
+    <button class="btn btn--secondary btn--sm" type="submit">Buscar</button>
+    {% if query %}<a class="btn btn--secondary btn--sm" href="{% url 'general_settings' %}">Limpiar</a>{% endif %}
+  </form>
+  {% if rows %}
     <table class="data-table">
       <thead>
         <tr>
-          <th>Complejo</th>
-          <th>Ciudad</th>
-          <th>Torneos</th>
-          <th>Usuarios</th>
+          <th>Usuario</th>
+          <th>Nombre</th>
+          <th>Email</th>
+          <th>Complejos</th>
+          <th>Acceso</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
-        {% for complex in complexes %}
+        {% for row in rows %}
           <tr>
-            <td>{{ complex.name }}</td>
-            <td>{% if complex.city %}{{ complex.city }}{% else %}<span class="muted">—</span>{% endif %}</td>
-            <td>{{ complex.tournaments.count }}</td>
-            <td>{{ complex.user_count }}</td>
+            <td>
+              <a href="{% url 'general_user_edit' row.account.pk %}">{{ row.account.username }}</a>
+              {% if row.is_self %}<span class="chip chip--open">Vos</span>{% endif %}
+            </td>
+            <td>{{ row.account.get_full_name|default:"—" }}</td>
+            <td>{% if row.account.email %}{{ row.account.email }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>
+              {% if row.account.is_superuser %}
+                <span class="chip chip--running">Todos</span>
+              {% elif row.complexes %}
+                {% for complex in row.complexes %}<span class="chip">{{ complex.name }}</span> {% endfor %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if row.account.is_superuser %}
+                <span class="chip chip--running">Administrador general</span>
+              {% elif row.account.is_staff %}
+                <span class="chip chip--running">Panel</span>
+              {% else %}
+                <span class="chip chip--draft">Sin panel</span>
+              {% endif %}
+              {% if not row.account.is_active %}<span class="chip chip--draft">Suspendido</span>{% endif %}
+            </td>
             <td>
               <div class="table-actions">
-                <a class="btn btn--secondary btn--sm" href="{% url 'general_complex_edit' complex.pk %}">Editar</a>
-                {% if not is_general_admin and complex.user_count > 1 %}
-                  <form method="post" action="{% url 'general_complex_leave' complex.pk %}" class="inline-form"
-                        data-confirm="¿Dejar de administrar «{{ complex.name }}»? El complejo y sus datos quedan para el resto de los usuarios.">
+                <a class="btn btn--secondary btn--sm" href="{% url 'general_user_edit' row.account.pk %}">Editar</a>
+                {% if not row.is_self %}
+                  <form method="post" action="{% url 'general_user_toggle_active' row.account.pk %}" class="inline-form">
                     {% csrf_token %}
-                    <button class="btn btn--secondary btn--sm" type="submit">Dejar de administrar</button>
+                    <button class="btn btn--secondary btn--sm" type="submit">{% if row.account.is_active %}Suspender{% else %}Reactivar{% endif %}</button>
                   </form>
-                {% endif %}
-                {% if is_general_admin or complex.user_count == 1 %}
-                  <a class="btn btn--danger btn--sm" href="{% url 'general_complex_delete' complex.pk %}">Eliminar</a>
+                  {% if is_general_admin %}
+                    <a class="btn btn--danger btn--sm" href="{% url 'general_user_delete' row.account.pk %}">Eliminar</a>
+                  {% endif %}
                 {% endif %}
               </div>
             </td>
@@ -55,30 +86,8 @@
       </tbody>
     </table>
   {% else %}
-    <p class="alert alert--info">Todavía no administrás ningún complejo. Creá el primero acá abajo.</p>
+    <p class="alert alert--info">No hay usuarios que coincidan con la búsqueda.</p>
   {% endif %}
-  <h3>Agregar complejo</h3>
-  <form method="post" action="{% url 'general_complex_create' %}" class="form-grid">
-    {% csrf_token %}
-    <label>Nombre
-      <input type="text" name="name" maxlength="120" required placeholder="Ej: Complejo Pádel Norte">
-    </label>
-    <label>Ciudad
-      <input type="text" name="city" maxlength="120" placeholder="Ej: Rosario">
-    </label>
-    <label>Dirección
-      <input type="text" name="address" maxlength="200" placeholder="Ej: Av. Central 123">
-    </label>
-    <label>Teléfono
-      <input type="text" name="phone" maxlength="40" placeholder="Ej: 341 555 5555">
-    </label>
-    <label>Email
-      <input type="email" name="email" placeholder="Ej: contacto@club.com">
-    </label>
-    <div class="form-actions">
-      <button class="btn btn--primary" type="submit">Crear complejo</button>
-    </div>
-  </form>
 </section>
 
 <section class="padel-card" id="agregar-usuario">
@@ -175,6 +184,77 @@
     Al entrar, el sistema le recuerda cambiarla por una propia.
     Si su email coincide con una cuenta de Google, también puede ingresar con Google.
   </p>
+</section>
+
+<section class="padel-card" id="complejos">
+  <h2>Mis complejos</h2>
+  <p class="help">
+    Cada usuario del panel administra su propio complejo: creá el tuyo y después armá
+    torneos ahí dentro. Los jugadores se comparten en toda la plataforma; torneos y
+    usuarios quedan separados por complejo.
+  </p>
+  {% if complexes %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Complejo</th>
+          <th>Ciudad</th>
+          <th>Torneos</th>
+          <th>Usuarios</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for complex in complexes %}
+          <tr>
+            <td>{{ complex.name }}</td>
+            <td>{% if complex.city %}{{ complex.city }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>{{ complex.tournaments.count }}</td>
+            <td>{{ complex.user_count }}</td>
+            <td>
+              <div class="table-actions">
+                <a class="btn btn--secondary btn--sm" href="{% url 'general_complex_edit' complex.pk %}">Editar</a>
+                {% if not is_general_admin and complex.user_count > 1 %}
+                  <form method="post" action="{% url 'general_complex_leave' complex.pk %}" class="inline-form"
+                        data-confirm="¿Dejar de administrar «{{ complex.name }}»? El complejo y sus datos quedan para el resto de los usuarios.">
+                    {% csrf_token %}
+                    <button class="btn btn--secondary btn--sm" type="submit">Dejar de administrar</button>
+                  </form>
+                {% endif %}
+                {% if is_general_admin or complex.user_count == 1 %}
+                  <a class="btn btn--danger btn--sm" href="{% url 'general_complex_delete' complex.pk %}">Eliminar</a>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="alert alert--info">Todavía no administrás ningún complejo. Creá el primero acá abajo.</p>
+  {% endif %}
+  <h3>Agregar complejo</h3>
+  <form method="post" action="{% url 'general_complex_create' %}" class="form-grid">
+    {% csrf_token %}
+    <label>Nombre
+      <input type="text" name="name" maxlength="120" required placeholder="Ej: Complejo Pádel Norte">
+    </label>
+    <label>Ciudad
+      <input type="text" name="city" maxlength="120" placeholder="Ej: Rosario">
+    </label>
+    <label>Dirección
+      <input type="text" name="address" maxlength="200" placeholder="Ej: Av. Central 123">
+    </label>
+    <label>Teléfono
+      <input type="text" name="phone" maxlength="40" placeholder="Ej: 341 555 5555">
+    </label>
+    <label>Email
+      <input type="email" name="email" placeholder="Ej: contacto@club.com">
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--primary" type="submit">Crear complejo</button>
+    </div>
+  </form>
 </section>
 
 {% if is_general_admin %}
@@ -322,74 +402,4 @@
   {% endif %}
 </section>
 {% endif %}
-
-<section class="panel-section">
-  <h2>Usuarios ({{ rows|length }})</h2>
-  <form method="get" class="inline-form" style="margin-bottom: .8rem;">
-    <input type="text" name="q" value="{{ query }}" placeholder="Buscar por usuario, nombre o email…">
-    <button class="btn btn--secondary btn--sm" type="submit">Buscar</button>
-    {% if query %}<a class="btn btn--secondary btn--sm" href="{% url 'general_settings' %}">Limpiar</a>{% endif %}
-  </form>
-  {% if rows %}
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Usuario</th>
-          <th>Nombre</th>
-          <th>Email</th>
-          <th>Complejos</th>
-          <th>Acceso</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-          <tr>
-            <td>
-              <a href="{% url 'general_user_edit' row.account.pk %}">{{ row.account.username }}</a>
-              {% if row.is_self %}<span class="chip chip--open">Vos</span>{% endif %}
-            </td>
-            <td>{{ row.account.get_full_name|default:"—" }}</td>
-            <td>{% if row.account.email %}{{ row.account.email }}{% else %}<span class="muted">—</span>{% endif %}</td>
-            <td>
-              {% if row.account.is_superuser %}
-                <span class="chip chip--running">Todos</span>
-              {% elif row.complexes %}
-                {% for complex in row.complexes %}<span class="chip">{{ complex.name }}</span> {% endfor %}
-              {% else %}
-                <span class="muted">—</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if row.account.is_superuser %}
-                <span class="chip chip--running">Administrador general</span>
-              {% elif row.account.is_staff %}
-                <span class="chip chip--running">Panel</span>
-              {% else %}
-                <span class="chip chip--draft">Sin panel</span>
-              {% endif %}
-              {% if not row.account.is_active %}<span class="chip chip--draft">Suspendido</span>{% endif %}
-            </td>
-            <td>
-              <div class="table-actions">
-                <a class="btn btn--secondary btn--sm" href="{% url 'general_user_edit' row.account.pk %}">Editar</a>
-                {% if not row.is_self %}
-                  <form method="post" action="{% url 'general_user_toggle_active' row.account.pk %}" class="inline-form">
-                    {% csrf_token %}
-                    <button class="btn btn--secondary btn--sm" type="submit">{% if row.account.is_active %}Suspender{% else %}Reactivar{% endif %}</button>
-                  </form>
-                  {% if is_general_admin %}
-                    <a class="btn btn--danger btn--sm" href="{% url 'general_user_delete' row.account.pk %}">Eliminar</a>
-                  {% endif %}
-                {% endif %}
-              </div>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p class="alert alert--info">No hay usuarios que coincidan con la búsqueda.</p>
-  {% endif %}
-</section>
 {% endblock %}

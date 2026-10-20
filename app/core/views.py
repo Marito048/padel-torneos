@@ -1042,13 +1042,33 @@ def general_user_edit(request, user_id):
                 account.is_staff = request.POST.get("is_staff") == "1"
                 if requester.is_superuser:
                     account.is_superuser = request.POST.get("is_superuser") == "1"
-                complex_ids, manageable_ids = _parse_complex_selection(request, requester, required=False)
-                outside_ids = list(
-                    account.complexes.exclude(pk__in=manageable_ids).values_list("pk", flat=True)
-                )
-                if not complex_ids and not outside_ids and not account.is_superuser:
+            # Los complejos se pueden cambiar también al editar el propio usuario:
+            # así el administrador general puede sumarse un complejo recién creado.
+            had_complexes = account.complexes.exists()
+            complex_ids, manageable_ids = _parse_complex_selection(request, requester, required=False)
+            outside_ids = list(
+                account.complexes.exclude(pk__in=manageable_ids).values_list("pk", flat=True)
+            )
+            if not complex_ids and not outside_ids and not account.is_superuser:
+                # Si ya no tenía complejos, no se lo obliga a sumarse uno para
+                # poder editar sus datos; si tenía, no puede quedar sin ninguno.
+                if not (is_self and not had_complexes):
+                    if is_self:
+                        raise ValidationError("Tenés que quedar a cargo de al menos un complejo.")
                     raise ValidationError("Elegí al menos un complejo para el usuario.")
-                account.complexes.set(list(complex_ids) + outside_ids)
+            if is_self and not account.is_superuser:
+                # Misma regla que «Dejar de administrar»: no se puede dejar un
+                # complejo sin nadie a cargo desde la autoedición.
+                for owned in account.complexes.filter(pk__in=manageable_ids):
+                    if (
+                        owned.pk not in complex_ids
+                        and not owned.users.exclude(pk=account.pk).exists()
+                    ):
+                        raise ValidationError(
+                            f"Sos la única persona a cargo de «{owned.name}». "
+                            "Si no lo vas a usar más, eliminalo."
+                        )
+            account.complexes.set(list(complex_ids) + outside_ids)
             account.full_clean()
             account.save()
 

@@ -262,3 +262,137 @@ class DeleteComplexTests(AccountsFixtureMixin, TestCase):
         self.assertContains(response, reverse("general_complex_delete", args=[self.own_complex.pk]))
         self.assertContains(response, reverse("general_complex_leave", args=[self.shared_complex.pk]))
         self.assertNotContains(response, reverse("general_complex_leave", args=[self.own_complex.pk]))
+
+
+class SelfEditComplexTests(AccountsFixtureMixin, TestCase):
+    """Al editar la propia cuenta también se pueden ajustar los complejos."""
+
+    def setUp(self):
+        self.boss = User.objects.create_superuser("jefe", password="clave-segura-000")
+        self.staff = self.make_user("encargado", is_staff=True)
+        self.complex = self.make_complex("Complejo Uno", "complejo-uno", self.staff)
+
+    def test_self_edit_shows_complex_selector_and_hides_permissions(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("general_user_edit", args=[self.staff.pk]))
+        self.assertContains(response, 'name="complexes"')
+        self.assertContains(response, self.complex.name)
+        self.assertContains(response, "siempre tenés que quedar a cargo de al menos uno")
+        self.assertNotContains(response, "pedile a un administrador general")
+        # Los permisos siguen bloqueados en la autoedición.
+        self.assertNotContains(response, 'name="is_active"')
+        self.assertNotContains(response, 'name="is_staff"')
+
+    def test_regular_user_cannot_leave_without_complexes(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("general_user_edit", args=[self.staff.pk]),
+            {"username": "encargado"},
+            follow=True,
+        )
+        self.assertContains(response, "Tenés que quedar a cargo de al menos un complejo")
+        self.assertTrue(self.complex.users.filter(pk=self.staff.pk).exists())
+
+    def test_regular_user_can_leave_a_shared_complex(self):
+        partner = self.make_user("socio", is_staff=True)
+        shared = self.make_complex("Complejo Compartido", "complejo-compartido", self.staff, partner)
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("general_user_edit", args=[self.staff.pk]),
+            {"username": "encargado", "complexes": [self.complex.pk]},
+            follow=True,
+        )
+        self.assertContains(response, "actualizado")
+        self.assertFalse(shared.users.filter(pk=self.staff.pk).exists())
+        self.assertTrue(self.complex.users.filter(pk=self.staff.pk).exists())
+
+    def test_cannot_orphan_a_complex_from_self_edit(self):
+        second = self.make_complex("Complejo Dos", "complejo-dos", self.staff)
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("general_user_edit", args=[self.staff.pk]),
+            {"username": "encargado", "complexes": [self.complex.pk]},
+            follow=True,
+        )
+        self.assertContains(response, "Sos la única persona a cargo")
+        self.assertTrue(second.users.filter(pk=self.staff.pk).exists())
+
+    def test_cannot_assign_a_complex_you_do_not_manage(self):
+        other = self.make_user("ajeno", is_staff=True)
+        foreign = self.make_complex("Complejo Ajeno", "complejo-ajeno", other)
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("general_user_edit", args=[self.staff.pk]),
+            {"username": "encargado", "complexes": [self.complex.pk, foreign.pk]},
+            follow=True,
+        )
+        self.assertContains(response, "Sólo podés asignar complejos que administrás")
+        self.assertFalse(foreign.users.filter(pk=self.staff.pk).exists())
+
+    def test_superuser_can_assign_a_new_complex_to_self(self):
+        other = self.make_complex("Complejo Nuevo", "complejo-nuevo")
+        self.client.force_login(self.boss)
+        response = self.client.post(
+            reverse("general_user_edit", args=[self.boss.pk]),
+            {"username": "jefe", "complexes": [other.pk]},
+            follow=True,
+        )
+        self.assertContains(response, "actualizado")
+        self.assertTrue(other.users.filter(pk=self.boss.pk).exists())
+        self.boss.refresh_from_db()
+        self.assertTrue(self.boss.is_superuser)
+
+    def test_self_edit_does_not_change_permissions(self):
+        self.client.force_login(self.staff)
+        self.client.post(
+            reverse("general_user_edit", args=[self.staff.pk]),
+            {"username": "encargado", "is_active": "0", "is_staff": "0", "complexes": [self.complex.pk]},
+        )
+        self.staff.refresh_from_db()
+        self.assertTrue(self.staff.is_active)
+        self.assertTrue(self.staff.is_staff)
+        self.assertFalse(self.staff.is_superuser)
+
+    def test_staff_without_complexes_can_still_edit_profile(self):
+        lonely = self.make_user("sin-complejo", is_staff=True)
+        self.client.force_login(lonely)
+        response = self.client.post(
+            reverse("general_user_edit", args=[lonely.pk]),
+            {"username": "sin-complejo", "first_name": "Ana"},
+            follow=True,
+        )
+        self.assertContains(response, "actualizado")
+        lonely.refresh_from_db()
+        self.assertEqual(lonely.first_name, "Ana")
+
+
+class SettingsSectionsTests(AccountsFixtureMixin, TestCase):
+    """Configuración general arranca con Usuarios y un menú de secciones."""
+
+    def setUp(self):
+        self.boss = User.objects.create_superuser("jefe", password="clave-segura-000")
+        self.client.force_login(self.boss)
+
+    def _html(self):
+        return self.client.get(reverse("general_settings")).content.decode()
+
+    def test_sections_order_and_nav(self):
+        html = self._html()
+        section_ids = ("usuarios", "agregar-usuario", "complejos", "solicitudes", "invitaciones")
+        positions = [html.index(f'id="{section_id}"') for section_id in section_ids]
+        self.assertEqual(positions, sorted(positions))
+
+        nav_start = html.index('class="settings-nav"')
+        nav = html[nav_start:html.index("</nav>", nav_start)]
+        labels = ("Usuarios", "Agregar usuario", "Mis complejos", "Solicitudes", "Invitaciones")
+        nav_positions = [nav.index(label) for label in labels]
+        self.assertEqual(nav_positions, sorted(nav_positions))
+
+    def test_regular_staff_does_not_see_admin_sections(self):
+        staff = self.make_user("encargado", is_staff=True)
+        self.client.force_login(staff)
+        html = self._html()
+        self.assertIn('id="usuarios"', html)
+        self.assertNotIn('id="solicitudes"', html)
+        self.assertNotIn('id="invitaciones"', html)
+        self.assertNotIn('href="#solicitudes"', html)

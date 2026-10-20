@@ -311,6 +311,17 @@ body.padel-page {
 .panel-nav a:hover { background: #eef5f0; }
 .panel-nav a.active { background: var(--ps-green); color: #fff; }
 
+.settings-nav {
+    display: flex; flex-wrap: wrap; gap: .35rem; margin: 1.1rem 0 1.4rem;
+    padding: .45rem; background: #fff; border: 1px solid #e2e9e5;
+    border-radius: 12px; box-shadow: var(--ps-shadow);
+}
+.settings-nav a {
+    padding: .5rem .85rem; border-radius: 9px; font-weight: 700; font-size: .9rem;
+    color: #2c3e50; text-decoration: none;
+}
+.settings-nav a:hover { background: #eef5f0; color: var(--ps-green-dark); }
+
 .panel-section { margin: 1.4rem 0 1rem; }
 .panel-section h1 { margin: 0 0 .35rem; font-size: 1.6rem; letter-spacing: -.02em; }
 .panel-section h2 { margin: 0 0 .6rem; }

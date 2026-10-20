@@ -2273,7 +2273,13 @@ class GeneralSettingsTests(TestCase):
     def test_self_edit_keeps_permissions_active_and_complexes(self):
         response = self.client.post(
             f"/gestion/configuracion/usuarios/{self.staff.pk}/",
-            {"username": "encargado", "first_name": "Encar", "last_name": "Gado", "email": "enc@correo.com"},
+            {
+                "username": "encargado",
+                "first_name": "Encar",
+                "last_name": "Gado",
+                "email": "enc@correo.com",
+                "complexes": [self.complex.pk],
+            },
             follow=True,
         )
         self.assertContains(response, "actualizado")
@@ -2903,6 +2909,7 @@ class SignupRequestTests(TestCase):
                 "username": "encargado",
                 "password": "propia-clave-larga-88",
                 "password2": "propia-clave-larga-88",
+                "complexes": [self.complex.pk],
             },
             follow=True,
         )
