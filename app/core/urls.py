@@ -38,6 +38,21 @@ urlpatterns = [
         name="general_complex_edit",
     ),
     path(
+        "gestion/configuracion/complejos/<int:complex_id>/canchas/crear/",
+        views.general_court_create,
+        name="general_court_create",
+    ),
+    path(
+        "gestion/configuracion/canchas/<int:court_id>/",
+        views.general_court_edit,
+        name="general_court_edit",
+    ),
+    path(
+        "gestion/configuracion/canchas/<int:court_id>/estado/",
+        views.general_court_toggle,
+        name="general_court_toggle",
+    ),
+    path(
         "gestion/configuracion/complejos/<int:complex_id>/eliminar/",
         views.general_complex_delete,
         name="general_complex_delete",

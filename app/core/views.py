@@ -864,6 +864,7 @@ def general_settings(request):
         # No usar annotate(Count("users")): el M2M ya viene unido por el usuario
         # que consulta y contaría sólo su propia fila.
         complex_obj.user_count = complex_obj.users.count()
+        complex_obj.court_count = complex_obj.courts.count()
     rows = [
         {
             "account": entry,
@@ -1285,11 +1286,120 @@ def general_complex_edit(request, complex_id):
 
         if _run_action(request, action, "Datos del complejo actualizados."):
             return redirect("general_settings")
+    courts = list(complex_obj.courts.annotate(booking_count=Count("bookings")).order_by("name"))
     return render(
         request,
         "panel/settings_complex_form.html",
-        {"complex": complex_obj},
+        {"complex": complex_obj, "courts": courts, "surfaces": Court.SURFACE},
     )
+
+
+def _court_or_404(requester, court_id: int) -> Court:
+    """Devuelve la cancha si el usuario puede administrarla."""
+    court = get_object_or_404(Court, pk=court_id)
+    if court.complex_id:
+        _manageable_complex(requester, court.complex_id)
+    elif not requester.is_superuser:
+        raise PermissionDenied("No podés administrar esa cancha.")
+    return court
+
+
+def _court_surface(raw: str) -> str:
+    value = (raw or "").strip() or "artificial"
+    if value not in {key for key, _ in Court.SURFACE}:
+        raise ValidationError("Elegí una superficie válida para la cancha.")
+    return value
+
+
+def _validate_court_name(complex_obj: Complex, name: str, *, exclude_pk: int | None = None) -> None:
+    duplicates = complex_obj.courts.filter(name__iexact=name)
+    if exclude_pk:
+        duplicates = duplicates.exclude(pk=exclude_pk)
+    if duplicates.exists():
+        raise ValidationError("Ya hay una cancha con ese nombre en el complejo.")
+
+
+def _court_return_url(court: Court) -> str:
+    if court.complex_id:
+        return reverse("general_complex_edit", args=[court.complex_id]) + "#canchas"
+    return reverse("general_settings")
+
+
+@login_required
+@require_POST
+def general_court_create(request, complex_id):
+    """Agrega una cancha al complejo desde «Mis complejos»."""
+    requester = _require_settings_access(request)
+    complex_obj = _manageable_complex(requester, complex_id)
+    name = (request.POST.get("name") or "").strip()
+
+    def action():
+        if not name:
+            raise ValidationError("Elegí un nombre para la cancha.")
+        _validate_court_name(complex_obj, name)
+        court = Court(
+            complex=complex_obj,
+            name=name,
+            surface=_court_surface(request.POST.get("surface") or ""),
+            is_active=True,
+        )
+        court.full_clean()
+        court.save()
+
+    _run_action(
+        request,
+        action,
+        f"Cancha «{name}» agregada. Si está activa, ya aparece en la reserva de turnos.",
+    )
+    return redirect(reverse("general_complex_edit", args=[complex_obj.pk]) + "#canchas")
+
+
+@login_required
+def general_court_edit(request, court_id):
+    requester = _require_settings_access(request)
+    court = _court_or_404(requester, court_id)
+    if request.method == "POST":
+
+        def action():
+            name = (request.POST.get("name") or "").strip()
+            if not name:
+                raise ValidationError("Elegí un nombre para la cancha.")
+            if court.complex_id:
+                _validate_court_name(court.complex, name, exclude_pk=court.pk)
+            court.name = name
+            court.surface = _court_surface(request.POST.get("surface") or "")
+            court.is_active = request.POST.get("is_active") == "1"
+            court.full_clean()
+            court.save()
+
+        if _run_action(request, action, "Cancha actualizada."):
+            return redirect(_court_return_url(court))
+    return render(
+        request,
+        "panel/settings_court_form.html",
+        {"court": court, "surfaces": Court.SURFACE},
+    )
+
+
+@login_required
+@require_POST
+def general_court_toggle(request, court_id):
+    requester = _require_settings_access(request)
+    court = _court_or_404(requester, court_id)
+    court.is_active = not court.is_active
+    court.save(update_fields=["is_active"])
+    if court.is_active:
+        messages.success(
+            request,
+            f"Cancha «{court.name}» activada: ya aparece en la reserva de turnos.",
+        )
+    else:
+        messages.success(
+            request,
+            f"Cancha «{court.name}» desactivada: no se ofrece en la reserva pública.",
+        )
+    return redirect(_court_return_url(court))
+
 
 
 @login_required

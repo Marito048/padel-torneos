@@ -24,8 +24,9 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
   los usuarios logueados ven además el botón al panel de gestión. El ingreso del personal queda
   en «Ingresar».
 - **Multi-complejo**: cada complejo tiene sus torneos, canchas y usuarios autorizados.
-  Cada usuario del panel puede crear y editar su propio complejo desde Configuración general;
-  el único dato compartido entre complejos es la base de jugadores.
+  Cada usuario del panel puede crear y editar su propio complejo desde Configuración general,
+  donde también carga sus canchas (nombre y superficie) y las activa o desactiva para la
+  reserva de turnos; el único dato compartido entre complejos es la base de jugadores.
   El acceso a datos se valida siempre server-side (URL/sesión manipuladas no otorgan acceso).
 - **Cuentas y complejos**: el administrador general puede **suspender** una cuenta (por ejemplo,
   por licencia impaga: no puede ingresar y conserva todos sus datos) o **eliminarla

@@ -200,6 +200,7 @@
           <th>Complejo</th>
           <th>Ciudad</th>
           <th>Torneos</th>
+          <th>Canchas</th>
           <th>Usuarios</th>
           <th></th>
         </tr>
@@ -210,9 +211,11 @@
             <td>{{ complex.name }}</td>
             <td>{% if complex.city %}{{ complex.city }}{% else %}<span class="muted">—</span>{% endif %}</td>
             <td>{{ complex.tournaments.count }}</td>
+            <td>{{ complex.court_count }}</td>
             <td>{{ complex.user_count }}</td>
             <td>
               <div class="table-actions">
+                <a class="btn btn--secondary btn--sm" href="{% url 'general_complex_edit' complex.pk %}#canchas">Canchas</a>
                 <a class="btn btn--secondary btn--sm" href="{% url 'general_complex_edit' complex.pk %}">Editar</a>
                 {% if not is_general_admin and complex.user_count > 1 %}
                   <form method="post" action="{% url 'general_complex_leave' complex.pk %}" class="inline-form"

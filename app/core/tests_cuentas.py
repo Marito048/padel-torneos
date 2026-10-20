@@ -396,3 +396,121 @@ class SettingsSectionsTests(AccountsFixtureMixin, TestCase):
         self.assertNotIn('id="solicitudes"', html)
         self.assertNotIn('id="invitaciones"', html)
         self.assertNotIn('href="#solicitudes"', html)
+
+
+class CourtManagementTests(AccountsFixtureMixin, TestCase):
+    """Alta, edición y activación de canchas desde «Mis complejos»."""
+
+    def setUp(self):
+        self.boss = User.objects.create_superuser("jefe", password="clave-segura-000")
+        self.staff = self.make_user("encargado", is_staff=True)
+        self.other = self.make_user("ajeno", is_staff=True)
+        self.complex = self.make_complex("Complejo Uno", "complejo-uno", self.staff)
+        self.other_complex = self.make_complex("Complejo Dos", "complejo-dos", self.other)
+        self.court = Court.objects.create(complex=self.complex, name="Cancha 1")
+        self.client.force_login(self.staff)
+
+    def test_complex_edit_lists_courts_and_add_form(self):
+        response = self.client.get(reverse("general_complex_edit", args=[self.complex.pk]))
+        self.assertContains(response, "Cancha 1")
+        self.assertContains(response, "Agregar cancha")
+        self.assertContains(response, reverse("general_court_create", args=[self.complex.pk]))
+
+    def test_owner_adds_court(self):
+        response = self.client.post(
+            reverse("general_court_create", args=[self.complex.pk]),
+            {"name": "Cancha 2", "surface": "crystal"},
+            follow=True,
+        )
+        self.assertContains(response, "Cancha «Cancha 2» agregada")
+        court = Court.objects.get(complex=self.complex, name="Cancha 2")
+        self.assertEqual(court.surface, "crystal")
+        self.assertTrue(court.is_active)
+        self.assertContains(response, "Cancha 2")
+
+    def test_court_name_required_and_unique_per_complex(self):
+        create_url = reverse("general_court_create", args=[self.complex.pk])
+        response = self.client.post(create_url, {"name": "  "}, follow=True)
+        self.assertContains(response, "Elegí un nombre para la cancha")
+
+        response = self.client.post(create_url, {"name": "cancha 1"}, follow=True)
+        self.assertContains(response, "Ya hay una cancha con ese nombre")
+        self.assertEqual(self.complex.courts.count(), 1)
+
+        # El mismo nombre en otro complejo sí se permite.
+        self.client.force_login(self.boss)
+        response = self.client.post(
+            reverse("general_court_create", args=[self.other_complex.pk]),
+            {"name": "Cancha 1", "surface": "wall"},
+            follow=True,
+        )
+        self.assertContains(response, "agregada")
+        self.assertTrue(self.other_complex.courts.filter(name="Cancha 1").exists())
+
+    def test_invalid_surface_is_rejected(self):
+        response = self.client.post(
+            reverse("general_court_create", args=[self.complex.pk]),
+            {"name": "Cancha Rara", "surface": "madera"},
+            follow=True,
+        )
+        self.assertContains(response, "superficie válida")
+        self.assertFalse(self.complex.courts.filter(name="Cancha Rara").exists())
+
+    def test_cannot_add_court_to_foreign_complex(self):
+        response = self.client.post(
+            reverse("general_court_create", args=[self.other_complex.pk]), {"name": "Intrusa"}
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(self.other_complex.courts.exists())
+
+    def test_owner_edits_court_and_deactivates_it(self):
+        edit_url = reverse("general_court_edit", args=[self.court.pk])
+        response = self.client.get(edit_url)
+        self.assertContains(response, "Cancha «Cancha 1»")
+
+        response = self.client.post(
+            edit_url,
+            {"name": "Cancha Central", "surface": "wall", "is_active": "1"},
+            follow=True,
+        )
+        self.assertContains(response, "Cancha actualizada")
+        self.court.refresh_from_db()
+        self.assertEqual(self.court.name, "Cancha Central")
+        self.assertEqual(self.court.surface, "wall")
+        self.assertTrue(self.court.is_active)
+
+        self.client.post(
+            edit_url, {"name": "Cancha Central", "surface": "wall"}, follow=True
+        )
+        self.court.refresh_from_db()
+        self.assertFalse(self.court.is_active)
+
+    def test_toggle_court_active(self):
+        toggle_url = reverse("general_court_toggle", args=[self.court.pk])
+        response = self.client.post(toggle_url, follow=True)
+        self.assertContains(response, "desactivada")
+        self.court.refresh_from_db()
+        self.assertFalse(self.court.is_active)
+
+        response = self.client.post(toggle_url, follow=True)
+        self.assertContains(response, "activada")
+        self.court.refresh_from_db()
+        self.assertTrue(self.court.is_active)
+
+    def test_cannot_edit_or_toggle_foreign_court(self):
+        foreign = Court.objects.create(complex=self.other_complex, name="Cancha Ajena")
+        self.assertEqual(
+            self.client.get(reverse("general_court_edit", args=[foreign.pk])).status_code, 403
+        )
+        self.assertEqual(
+            self.client.post(reverse("general_court_toggle", args=[foreign.pk])).status_code, 403
+        )
+        foreign.refresh_from_db()
+        self.assertTrue(foreign.is_active)
+
+    def test_settings_list_links_to_complex_courts(self):
+        response = self.client.get(reverse("general_settings"))
+        self.assertContains(response, "Canchas")
+        self.assertContains(
+            response, reverse("general_complex_edit", args=[self.complex.pk]) + "#canchas"
+        )

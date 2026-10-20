@@ -37,4 +37,71 @@
     <a class="btn btn--secondary" href="{% url 'general_settings' %}">Volver a configuración</a>
   </div>
 </form>
+
+<section class="padel-card" id="canchas">
+  <h2>Canchas</h2>
+  <p class="help">
+    Cargá las canchas del complejo. Las canchas activas aparecen en la reserva
+    pública de turnos; las inactivas quedan guardadas pero no se ofrecen.
+  </p>
+  {% if courts %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Cancha</th>
+          <th>Superficie</th>
+          <th>Turnos</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for court in courts %}
+          <tr>
+            <td>{{ court.name }}</td>
+            <td>{{ court.get_surface_display }}</td>
+            <td>{{ court.booking_count }}</td>
+            <td>
+              {% if court.is_active %}
+                <span class="chip chip--running">Activa</span>
+              {% else %}
+                <span class="chip chip--draft">Inactiva</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="table-actions">
+                <a class="btn btn--secondary btn--sm" href="{% url 'general_court_edit' court.pk %}">Editar</a>
+                <form method="post" action="{% url 'general_court_toggle' court.pk %}" class="inline-form">
+                  {% csrf_token %}
+                  <button class="btn btn--secondary btn--sm" type="submit">
+                    {% if court.is_active %}Desactivar{% else %}Activar{% endif %}
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="alert alert--info">Todavía no hay canchas cargadas en este complejo.</p>
+  {% endif %}
+  <h3>Agregar cancha</h3>
+  <form method="post" action="{% url 'general_court_create' complex.pk %}" class="form-grid">
+    {% csrf_token %}
+    <label>Nombre
+      <input type="text" name="name" maxlength="60" required placeholder="Ej: Cancha 1">
+    </label>
+    <label>Superficie
+      <select name="surface">
+        {% for value, label in surfaces %}
+          <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--primary" type="submit">Agregar cancha</button>
+    </div>
+  </form>
+</section>
 {% endblock %}

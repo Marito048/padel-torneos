@@ -1,0 +1,42 @@
+{% extends "panel/base_panel.html" %}
+{% block title %}Cancha {{ court.name }} · Configuración{% endblock %}
+{% block content %}
+<section class="panel-section">
+  <h1>Cancha «{{ court.name }}»</h1>
+  <p class="muted">
+    {% if court.complex %}{{ court.complex.name }}{% endif %}
+    {% if not court.is_active %}<span class="chip chip--draft">Inactiva</span>{% endif %}
+  </p>
+</section>
+
+<form method="post">
+  {% csrf_token %}
+  <section class="padel-card">
+    <h2>Datos de la cancha</h2>
+    <div class="form-grid">
+      <label>Nombre
+        <input type="text" name="name" maxlength="60" required value="{{ court.name }}">
+      </label>
+      <label>Superficie
+        <select name="surface">
+          {% for value, label in surfaces %}
+            <option value="{{ value }}" {% if court.surface == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Estado</span>
+        <span class="check-field">
+          <input type="checkbox" name="is_active" value="1"{% if court.is_active %} checked{% endif %}>
+          Activa: aparece en la reserva pública de turnos
+        </span>
+      </label>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button class="btn btn--primary" type="submit">Guardar cambios</button>
+    <a class="btn btn--secondary" href="{% if court.complex %}{% url 'general_complex_edit' court.complex.pk %}#canchas{% else %}{% url 'general_settings' %}{% endif %}">Volver al complejo</a>
+  </div>
+</form>
+{% endblock %}
