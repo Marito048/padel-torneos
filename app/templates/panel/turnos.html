@@ -1,11 +1,12 @@
 {% extends "panel/base_panel.html" %}
+{% load static %}
 
 {% block title %}Turnos{% endblock %}
 
 {% block content %}
 <section class="panel-section">
   <h1>Turnos</h1>
-  <p class="muted">Agenda del día: ocupación por cancha, carga manual, bloqueos y cancelaciones.</p>
+  <p class="muted">Agenda del día: reservá, cobrá y liberá sin salir de la grilla.</p>
   <div class="padel-actions">
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_caja' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Caja y contabilidad</a>
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_horarios' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Horarios y feriados</a>
@@ -49,73 +50,200 @@
   {% elif board and not board.courts %}
     <p class="alert alert--info">El complejo no tiene canchas activas.</p>
   {% elif board and board.rows %}
-    <div class="turnos-board">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th scope="col">Hora</th>
-            {% for court in board.courts %}<th scope="col">{{ court.name }}</th>{% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in board.rows %}
+    <div class="turnos-layout">
+      <div class="turnos-board">
+        <table class="data-table">
+          <thead>
             <tr>
-              <th scope="row">{{ row.start|time:"H:i" }} a {{ row.end|time:"H:i" }}</th>
-              {% for cell in row.cells %}
-                <td class="turnos-cell">
-                  {% if cell.booking %}
-                    {% if cell.booking.status == "blocked" %}
-                      <span class="slot slot--blocked">Bloqueado</span>
-                      {% if cell.booking.note %}<span class="slot-note">{{ cell.booking.note }}</span>{% endif %}
-                    {% else %}
-                      <span class="slot slot--busy">{{ cell.booking.customer_name|default:"Reservado" }}</span>
-                      {% if cell.booking.status == "pending_payment" %}
-                        <span class="slot-note">Seña pendiente</span>
-                      {% elif cell.booking.customer_phone %}
-                        <span class="slot-note">{{ cell.booking.customer_phone }}</span>
-                      {% endif %}
-                    {% endif %}
-                    <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Liberar este horario?">
-                      {% csrf_token %}
-                      <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
-                      <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
-                      <input type="hidden" name="accion" value="cancelar">
-                      <input type="hidden" name="turno_id" value="{{ cell.booking.pk }}">
-                      <button class="btn btn--xs btn--secondary" type="submit">Liberar</button>
-                    </form>
-                  {% elif cell.past %}
-                    <span class="slot slot--past">—</span>
-                  {% else %}
-                    <a class="slot slot--free" href="{% url 'panel_turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}&cancha={{ cell.court.pk }}&hora={{ row.start|time:'H:i' }}#nuevo">Libre</a>
-                    <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Bloquear este horario?">
-                      {% csrf_token %}
-                      <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
-                      <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
-                      <input type="hidden" name="accion" value="bloquear">
-                      <input type="hidden" name="cancha" value="{{ cell.court.pk }}">
-                      <input type="hidden" name="hora" value="{{ row.start|time:'H:i' }}">
-                      <button class="btn btn--xs btn--secondary" type="submit">Bloquear</button>
-                    </form>
-                  {% endif %}
-                </td>
-              {% endfor %}
+              <th scope="col">Hora</th>
+              {% for court in board.courts %}<th scope="col">{{ court.name }}</th>{% endfor %}
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="turnos-legend">
-      <span><span class="slot slot--free">Libre</span> se puede reservar</span>
-      <span><span class="slot slot--busy">Reservado</span> con cliente</span>
-      <span><span class="slot slot--blocked">Bloqueado</span> sin cliente</span>
+          </thead>
+          <tbody>
+            {% for row in board.rows %}
+              <tr>
+                <th scope="row">{{ row.start|time:"H:i" }} a {{ row.end|time:"H:i" }}</th>
+                {% for cell in row.cells %}
+                  <td class="turnos-cell">
+                    {% if cell.booking %}
+                      {% if cell.booking.status == "blocked" %}
+                        <div class="turno-card turno-card--blocked">
+                          <span class="slot slot--blocked">Bloqueado</span>
+                          {% if cell.booking.note %}<span class="turno-card__meta">{{ cell.booking.note }}</span>{% endif %}
+                          <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Liberar este horario?">
+                            {% csrf_token %}
+                            <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                            <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+                            <input type="hidden" name="accion" value="cancelar">
+                            <input type="hidden" name="turno_id" value="{{ cell.booking.pk }}">
+                            <button class="btn btn--xs btn--secondary" type="submit">Liberar</button>
+                          </form>
+                        </div>
+                      {% else %}
+                        <div class="turno-card turno-card--busy{% if cell.booking.pk == selected_booking_id %} turno-card--selected{% endif %}">
+                          <a class="turno-card__main"
+                             href="{% url 'panel_turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}&turno={{ cell.booking.pk }}#turno-detalle-{{ cell.booking.pk }}"
+                             data-turno-open="turno-detalle-{{ cell.booking.pk }}"
+                             aria-controls="turno-detalle-{{ cell.booking.pk }}"
+                             aria-expanded="{% if cell.booking.pk == selected_booking_id %}true{% else %}false{% endif %}">
+                            <span class="turno-card__name">{{ cell.booking.customer_name|default:"Reservado" }}</span>
+                            <span class="turno-card__meta">
+                              {% if cell.booking.customer_phone %}{{ cell.booking.customer_phone }} · {% endif %}{{ cell.booking.get_source_display }}
+                            </span>
+                            {% if cell.booking.status == "pending_payment" %}
+                              <span class="status-pill status-pill--pending">Pendiente</span>
+                              <span class="turno-card__meta">Seña ${{ cell.booking.deposit_amount|floatformat:"-2" }}</span>
+                              {% if cell.booking.balance_amount > 0 %}<span class="turno-card__meta">Saldo ${{ cell.booking.balance_amount|floatformat:"-2" }} en club</span>{% endif %}
+                              {% if cell.booking.payment_expires_at %}<span class="turno-card__meta">Vence {{ cell.booking.payment_expires_at|time:"H:i" }}</span>{% endif %}
+                            {% elif cell.booking.is_paid %}
+                              {% if cell.booking.balance_paid %}
+                                <span class="status-pill status-pill--done">Abonado</span>
+                              {% else %}
+                                <span class="status-pill status-pill--done">{% if cell.booking.deposit_amount > 0 %}Seña abonada{% else %}Abonado{% endif %}</span>
+                                {% if cell.booking.balance_amount > 0 %}<span class="turno-card__meta">Saldo ${{ cell.booking.balance_amount|floatformat:"-2" }} en club</span>{% endif %}
+                              {% endif %}
+                            {% else %}
+                              <span class="status-pill status-pill--pending">Pendiente</span>
+                              {% if cell.booking.deposit_amount > 0 %}<span class="turno-card__meta">Seña ${{ cell.booking.deposit_amount|floatformat:"-2" }} pendiente</span>{% endif %}
+                            {% endif %}
+                          </a>
+                          <div class="turno-card__actions">
+                            {% if cell.booking.pay_action == "marcar_pagado" %}
+                              <a class="btn btn--xs btn--primary"
+                                 href="{% url 'panel_turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}&turno={{ cell.booking.pk }}#turno-detalle-{{ cell.booking.pk }}"
+                                 data-turno-open="turno-detalle-{{ cell.booking.pk }}">{{ cell.booking.pay_label }}</a>
+                            {% endif %}
+                            <a class="turno-card__manage"
+                               href="{% url 'panel_turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}&turno={{ cell.booking.pk }}#turno-detalle-{{ cell.booking.pk }}"
+                               data-turno-open="turno-detalle-{{ cell.booking.pk }}">Gestionar</a>
+                          </div>
+                        </div>
+                      {% endif %}
+                    {% elif cell.past %}
+                      <span class="slot slot--past">—</span>
+                    {% else %}
+                      <div class="turno-card turno-card--free">
+                        <span class="slot slot--free">Libre</span>
+                        <a class="btn btn--xs btn--secondary"
+                           href="{% url 'panel_turnos' %}?complejo={{ selected_complex.slug }}&fecha={{ day|date:'Y-m-d' }}&cancha={{ cell.court.pk }}&hora={{ row.start|time:'H:i' }}#nuevo">Reservar</a>
+                        <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Bloquear este horario?">
+                          {% csrf_token %}
+                          <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                          <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+                          <input type="hidden" name="accion" value="bloquear">
+                          <input type="hidden" name="cancha" value="{{ cell.court.pk }}">
+                          <input type="hidden" name="hora" value="{{ row.start|time:'H:i' }}">
+                          <button class="turno-card__manage" type="submit">Bloquear</button>
+                        </form>
+                      </div>
+                    {% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="turnos-legend">
+          <span><span class="slot slot--free">Libre</span> se puede reservar</span>
+          <span><span class="slot slot--busy">Reservado</span> con cliente</span>
+          <span><span class="slot slot--blocked">Bloqueado</span> sin cliente</span>
+        </div>
+      </div>
+
+      <aside class="turno-detail-panel{% if selected_booking_id %} is-open{% endif %}"
+             data-turno-panel
+             data-selected-turno="{{ selected_booking_id|default:'' }}">
+        <div class="turno-detail-empty" data-turno-empty{% if selected_booking_id %} hidden{% endif %}>
+          <span class="turno-detail__kicker">Detalle del turno</span>
+          <p>Elegí un turno de la agenda para ver el cliente, el pago y las acciones.</p>
+        </div>
+        {% for booking in active_bookings %}
+          {% if booking.status == "booked" or booking.status == "pending_payment" %}
+            <section class="turno-detail" id="turno-detalle-{{ booking.pk }}" data-turno-detail{% if booking.pk != selected_booking_id %} hidden{% endif %}>
+              <div class="turno-detail__top">
+                <span class="turno-detail__kicker">Detalle del turno</span>
+                <button class="turno-detail__close" type="button" data-turno-close aria-label="Cerrar detalle">×</button>
+              </div>
+              <h2>{{ booking.customer_name|default:"Reservado" }}</h2>
+              <p class="turno-detail__time">{{ booking.start_time|time:"H:i" }} a {{ booking.end_time|time:"H:i" }} · {{ booking.court.name }}{% if booking.customer_phone %} · {{ booking.customer_phone }}{% endif %}</p>
+              <div class="turno-detail__rows">
+                <div class="turno-detail__row"><span>Precio del turno</span><strong>{% if booking.price > 0 %}${{ booking.price|floatformat:"-2" }}{% else %}—{% endif %}</strong></div>
+                <div class="turno-detail__row"><span>Seña</span><strong>
+                  {% if booking.status == "pending_payment" %}
+                    ${{ booking.deposit_amount|floatformat:"-2" }} pendiente
+                  {% elif booking.is_paid and booking.deposit_amount > 0 %}
+                    ${{ booking.deposit_amount|floatformat:"-2" }} abonada
+                  {% elif booking.deposit_amount > 0 %}
+                    ${{ booking.deposit_amount|floatformat:"-2" }} pendiente
+                  {% else %}—{% endif %}
+                </strong></div>
+                <div class="turno-detail__row"><span>Saldo en club</span><strong>
+                  {% if booking.balance_paid %}Cobrado
+                  {% elif booking.balance_amount > 0 %}${{ booking.balance_amount|floatformat:"-2" }} pendiente
+                  {% else %}—{% endif %}
+                </strong></div>
+                <div class="turno-detail__row"><span>Cobrado hasta ahora</span><strong>${{ booking.paid_amount|floatformat:"-2" }}</strong></div>
+                <div class="turno-detail__row"><span>Origen</span><strong>{{ booking.get_source_display }}{% if booking.created_by %} ({{ booking.created_by.username }}){% endif %}</strong></div>
+              </div>
+              {% if booking.note %}<p class="turno-detail__note"><strong>Nota:</strong> {{ booking.note }}</p>{% endif %}
+              <div class="turno-detail__actions">
+                {% if booking.pay_action == "marcar_pagado" %}
+                  <form method="post" action="{% url 'panel_turno_accion' %}" class="turno-detail__form">
+                    {% csrf_token %}
+                    <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                    <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+                    <input type="hidden" name="accion" value="marcar_pagado">
+                    <input type="hidden" name="turno_id" value="{{ booking.pk }}">
+                    {% if booking.status != "pending_payment" %}
+                      <label class="turno-detail__field">Medio de pago
+                        <select name="metodo">
+                          <option value="cash">Efectivo</option>
+                          <option value="transfer">Transferencia</option>
+                          <option value="card">Tarjeta</option>
+                          <option value="other">Otro</option>
+                        </select>
+                      </label>
+                    {% endif %}
+                    <button class="btn btn--primary" type="submit">{{ booking.pay_label }}{% if booking.pay_label == "Cobrar saldo" %} ${{ booking.balance_amount|floatformat:"-2" }}{% endif %}</button>
+                  </form>
+                {% elif booking.pay_action == "marcar_pendiente" %}
+                  <form method="post" action="{% url 'panel_turno_accion' %}" class="turno-detail__form" data-confirm="¿Marcar este cobro como pendiente? Se registra una reversión en Caja.">
+                    {% csrf_token %}
+                    <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                    <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+                    <input type="hidden" name="accion" value="marcar_pendiente">
+                    <input type="hidden" name="turno_id" value="{{ booking.pk }}">
+                    <button class="btn btn--secondary" type="submit">{{ booking.pay_label }}</button>
+                  </form>
+                {% endif %}
+                {% if booking.status == "booked" and booking.wa_url %}
+                  <a class="btn btn--whatsapp" href="{{ booking.wa_url }}" target="_blank" rel="noopener">Avisar por WhatsApp</a>
+                {% endif %}
+                {% if booking.is_paid or booking.balance_paid %}
+                  <a class="btn btn--secondary" href="{% url 'panel_turnos_caja' %}?complejo={{ selected_complex.slug }}&desde={{ day|date:'Y-m-d' }}&hasta={{ day|date:'Y-m-d' }}&codigo={{ booking.code }}#devolucion">Registrar devolución</a>
+                {% endif %}
+                <form method="post" action="{% url 'panel_turno_accion' %}" class="turno-detail__form" data-confirm="¿Cancelar este turno?">
+                  {% csrf_token %}
+                  <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+                  <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
+                  <input type="hidden" name="accion" value="cancelar">
+                  <input type="hidden" name="turno_id" value="{{ booking.pk }}">
+                  <button class="btn btn--danger" type="submit">Cancelar turno</button>
+                </form>
+              </div>
+              <p class="turno-detail__hint">Los cobros y reversiones quedan registrados en Caja y contabilidad.</p>
+            </section>
+          {% endif %}
+        {% endfor %}
+      </aside>
     </div>
   {% else %}
     <p class="alert alert--info">No hay turnos configurados para ese día. Revisá «Horarios y feriados».</p>
   {% endif %}
 
   {% if board and board.rows %}
-    <section class="padel-card" id="nuevo">
-      <h2>Nuevo turno / bloqueo</h2>
+    <details class="padel-card turno-new" id="nuevo"{% if request.GET.cancha or request.GET.hora %} open{% endif %}>
+      <summary class="turno-new__summary">+ Nuevo turno o bloqueo</summary>
       <p class="help">Elegí cancha y horario, cargá el cliente y reservá. Con «Bloquear» el horario queda fuera de circulación.</p>
       <form method="post" action="{% url 'panel_turno_accion' %}" class="form-grid">
         {% csrf_token %}
@@ -149,108 +277,28 @@
           <button class="btn btn--secondary" type="submit" name="accion" value="bloquear">Bloquear horario</button>
         </div>
       </form>
-    </section>
+    </details>
   {% endif %}
 
-  <section class="panel-section">
-    <h2>Reservas del día</h2>
-  </section>
-  {% if bookings %}
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Hora</th><th>Cancha</th><th>Estado</th><th>Cliente</th><th>Precio</th><th>Pago</th><th>Origen</th><th>Nota</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for booking in bookings %}
-          <tr>
-            <td>{{ booking.start_time|time:"H:i" }} a {{ booking.end_time|time:"H:i" }}</td>
-            <td>{{ booking.court.name }}</td>
-            <td>
-              {% if booking.status == "pending_payment" %}<span class="status-pill status-pill--pending">Seña pendiente</span>
-              {% elif booking.status == "booked" %}<span class="status-pill status-pill--done">Reservado</span>
-              {% elif booking.status == "blocked" %}<span class="status-pill status-pill--pending">Bloqueado</span>
-              {% else %}<span class="status-pill status-pill--pending">Cancelado</span>{% endif %}
-              {% if booking.status == "pending_payment" and booking.payment_expires_at %}
-                <span class="slot-note">Vence {{ booking.payment_expires_at|time:"H:i" }}</span>
-              {% endif %}
-            </td>
-            <td>
-              {{ booking.customer_name|default:"—" }}
-              {% if booking.customer_phone %}<span class="slot-note">{{ booking.customer_phone }}</span>{% endif %}
-            </td>
-            <td>{% if booking.price > 0 %}${{ booking.price|floatformat:"-2" }}{% else %}—{% endif %}</td>
-            <td>
-              {% if booking.status == "pending_payment" %}
-                <span class="status-pill status-pill--pending">Seña ${{ booking.deposit_amount|floatformat:"-2" }}</span>
-                {% if booking.balance_amount > 0 %}
-                  <span class="slot-note">Saldo ${{ booking.balance_amount|floatformat:"-2" }} en club</span>
-                {% endif %}
-              {% elif booking.status == "booked" %}
-                {% if booking.is_paid %}
-                  {% if booking.balance_paid %}
-                    <span class="status-pill status-pill--done">Abonado</span>
-                  {% else %}
-                    <span class="status-pill status-pill--done">{% if booking.deposit_amount > 0 %}Seña abonada{% else %}Abonado{% endif %}</span>
-                    {% if booking.balance_amount > 0 %}
-                      <span class="slot-note">Saldo ${{ booking.balance_amount|floatformat:"-2" }} en club</span>
-                    {% endif %}
-                  {% endif %}
-                {% else %}
-                  <span class="status-pill status-pill--pending">{% if booking.deposit_amount > 0 %}Seña ${{ booking.deposit_amount|floatformat:"-2" }} pendiente{% else %}Pendiente{% endif %}</span>
-                  {% if booking.deposit_amount > 0 and booking.balance_amount > 0 %}
-                    <span class="slot-note">Saldo ${{ booking.balance_amount|floatformat:"-2" }} en club</span>
-                  {% endif %}
-                {% endif %}
-              {% elif booking.status == "blocked" %}—{% else %}—{% endif %}
-            </td>
-            <td>{{ booking.get_source_display }}{% if booking.created_by %} ({{ booking.created_by.username }}){% endif %}</td>
-            <td>{{ booking.note|default:"—" }}</td>
-            <td>
-              <div class="table-actions">
-                {% if booking.status == "booked" and booking.wa_url %}
-                  <a class="btn btn--xs btn--whatsapp" href="{{ booking.wa_url }}" target="_blank" rel="noopener">Avisar</a>
-                {% endif %}
-                {% if booking.status == "booked" or booking.status == "pending_payment" %}
-                  <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form">
-                    {% csrf_token %}
-                    <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
-                    <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
-                    <input type="hidden" name="accion" value="{{ booking.pay_action }}">
-                    <input type="hidden" name="turno_id" value="{{ booking.pk }}">
-                    {% if booking.pay_action == "marcar_pagado" and booking.status != "pending_payment" %}
-                      <select name="metodo" class="select--xs" aria-label="Medio de pago">
-                        <option value="cash">Efectivo</option>
-                        <option value="transfer">Transferencia</option>
-                        <option value="card">Tarjeta</option>
-                        <option value="other">Otro</option>
-                      </select>
-                    {% endif %}
-                    <button class="btn btn--xs btn--secondary" type="submit">{{ booking.pay_label }}</button>
-                  </form>
-                {% endif %}
-                {% if booking.is_paid or booking.balance_paid %}
-                  <a class="btn btn--xs btn--secondary" href="{% url 'panel_turnos_caja' %}?complejo={{ selected_complex.slug }}&desde={{ day|date:'Y-m-d' }}&hasta={{ day|date:'Y-m-d' }}&codigo={{ booking.code }}#devolucion">Devolución</a>
-                {% endif %}
-                {% if booking.status != "cancelled" %}
-                  <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Cancelar este turno?">
-                    {% csrf_token %}
-                    <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
-                    <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
-                    <input type="hidden" name="accion" value="cancelar">
-                    <input type="hidden" name="turno_id" value="{{ booking.pk }}">
-                    <button class="btn btn--xs btn--danger" type="submit">Cancelar</button>
-                  </form>
-                {% endif %}
-              </div>
-            </td>
-          </tr>
+  {% if cancelled_bookings %}
+    <details class="turno-cancelled">
+      <summary>Turnos cancelados del día ({{ cancelled_bookings|length }})</summary>
+      <ul class="turno-cancelled__list">
+        {% for booking in cancelled_bookings %}
+          <li>
+            <strong>{{ booking.start_time|time:"H:i" }} a {{ booking.end_time|time:"H:i" }}</strong>
+            · {{ booking.court.name }}
+            {% if booking.customer_name %}· {{ booking.customer_name }}{% endif %}
+            {% if booking.note %}· {{ booking.note }}{% endif %}
+            <span class="status-pill status-pill--pending">Cancelado</span>
+          </li>
         {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p class="help">Todavía no hay reservas para este día.</p>
+      </ul>
+    </details>
   {% endif %}
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'core/turnos.js' %}"></script>
 {% endblock %}

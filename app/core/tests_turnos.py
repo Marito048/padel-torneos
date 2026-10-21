@@ -343,7 +343,9 @@ class PanelTurnosTests(TurnosFixtureMixin, TestCase):
 
     def test_pause_added_from_panel(self):
         self.client.force_login(self.admin)
-        schedule = self.make_schedule(self.complex, day_type="weekday")
+        schedule, _ = CourtSchedule.objects.get_or_create(
+            complex=self.complex, day_type="weekday"
+        )
         response = self.client.post(
             reverse("panel_horarios_accion"),
             {
@@ -381,6 +383,79 @@ class PanelTurnosTests(TurnosFixtureMixin, TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Ana")
+
+    def test_selected_booking_opens_its_detail_panel(self):
+        self.client.force_login(self.admin)
+        booking = self.make_booking(
+            self.complex, self.court, self.day, time(9, 0), customer_name="Ana"
+        )
+        response = self.client.get(
+            reverse("panel_turnos"),
+            {
+                "complejo": self.complex.slug,
+                "fecha": self.day.isoformat(),
+                "turno": booking.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'id="turno-detalle-{booking.pk}"')
+        self.assertContains(response, "Detalle del turno")
+        self.assertContains(response, "Cancelar turno")
+        self.assertContains(response, f'data-selected-turno="{booking.pk}"')
+
+    def test_selected_booking_from_another_complex_is_ignored(self):
+        self.client.force_login(self.admin)
+        other_court = self.make_court(self.other_complex)
+        other_booking = self.make_booking(
+            self.other_complex, other_court, self.day, time(9, 0), customer_name="Otra complejo"
+        )
+        response = self.client.get(
+            reverse("panel_turnos"),
+            {
+                "complejo": self.complex.slug,
+                "fecha": self.day.isoformat(),
+                "turno": other_booking.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, f'id="turno-detalle-{other_booking.pk}"')
+        self.assertContains(response, 'data-selected-turno=""')
+
+    def test_blocked_booking_does_not_open_a_detail_panel(self):
+        self.client.force_login(self.admin)
+        booking = self.make_booking(
+            self.complex, self.court, self.day, time(9, 0), status="blocked", note="Mantenimiento"
+        )
+        response = self.client.get(
+            reverse("panel_turnos"),
+            {
+                "complejo": self.complex.slug,
+                "fecha": self.day.isoformat(),
+                "turno": booking.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, f'id="turno-detalle-{booking.pk}"')
+        self.assertContains(response, 'data-selected-turno=""')
+        self.assertContains(response, "Mantenimiento")
+
+    def test_cancelled_bookings_are_in_a_collapsible_history(self):
+        self.client.force_login(self.admin)
+        self.make_booking(
+            self.complex,
+            self.court,
+            self.day,
+            time(9, 0),
+            status="cancelled",
+            customer_name="Cliente cancelado",
+        )
+        response = self.client.get(
+            reverse("panel_turnos"), {"complejo": self.complex.slug, "fecha": self.day.isoformat()}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Reservas del día")
+        self.assertContains(response, "Turnos cancelados del día (1)")
+        self.assertContains(response, "Cliente cancelado")
 
 
 class MonthCalendarTests(TurnosFixtureMixin, TestCase):

@@ -2971,6 +2971,48 @@ def _caja_back_url(selected, start, end, method=""):
     return f"{reverse('panel_turnos_caja')}?{urlencode(params)}"
 
 
+def _decorate_turno_booking(booking, complex_obj):
+    """Agrega a un turno los datos de contacto y la próxima acción de cobro."""
+    if booking.customer_phone and booking.status == "booked":
+        booking.wa_url = _wa_url(
+            booking.customer_phone,
+            (
+                f"Hola {booking.customer_name}, te confirmamos el turno en {complex_obj.name}: "
+                f"{booking.court.name}, {booking.date:%d/%m} de "
+                f"{booking.start_time:%H:%M} a {booking.end_time:%H:%M}."
+            ),
+        )
+    else:
+        booking.wa_url = ""
+    # Acción de cobro que corresponde según lo ya registrado: primero la
+    # seña online/manual y, una vez abonada, el saldo que se paga en el club.
+    if (
+        booking.is_paid
+        and booking.deposit_amount > 0
+        and not booking.balance_paid
+        and booking.balance_amount > 0
+    ):
+        booking.pay_action = "marcar_pagado"
+        booking.pay_label = "Cobrar saldo"
+    elif booking.is_paid and booking.deposit_amount > 0 and booking.balance_paid:
+        booking.pay_action = "marcar_pendiente"
+        booking.pay_label = "Marcar saldo pendiente"
+    elif booking.is_paid:
+        booking.pay_action = "marcar_pendiente"
+        booking.pay_label = (
+            "Marcar seña pendiente" if booking.deposit_amount > 0 else "Marcar pendiente"
+        )
+    else:
+        booking.pay_action = "marcar_pagado"
+        if booking.status == "pending_payment":
+            booking.pay_label = "Confirmar seña"
+        elif booking.deposit_amount > 0:
+            booking.pay_label = "Marcar seña abonada"
+        else:
+            booking.pay_label = "Marcar abonado"
+    return booking
+
+
 @login_required
 def panel_turnos(request):
     """Agenda del día: ocupación, carga manual, bloqueos, cobros y cancelaciones."""
@@ -2987,48 +3029,34 @@ def panel_turnos(request):
     day_paid = Decimal("0")
     day_balance = Decimal("0")
     for booking in bookings:
+        _decorate_turno_booking(booking, selected)
         if booking.status == "cancelled":
             continue
         day_total += booking.price or Decimal("0")
         day_paid += booking.paid_amount
         day_balance += booking.balance_amount
-        if booking.customer_phone and booking.status == "booked":
-            booking.wa_url = _wa_url(
-                booking.customer_phone,
-                (
-                    f"Hola {booking.customer_name}, te confirmamos el turno en {booking.complex.name}: "
-                    f"{booking.court.name}, {booking.date:%d/%m} de "
-                    f"{booking.start_time:%H:%M} a {booking.end_time:%H:%M}."
-                ),
-            )
-        else:
-            booking.wa_url = ""
-        # Acción de cobro que corresponde según lo ya registrado: primero la
-        # seña online/manual y, una vez abonada, el saldo que se paga en el club.
-        if (
-            booking.is_paid
-            and booking.deposit_amount > 0
-            and not booking.balance_paid
-            and booking.balance_amount > 0
+
+    if board:
+        for row in board["rows"]:
+            for cell in row["cells"]:
+                if cell["booking"] is not None:
+                    _decorate_turno_booking(cell["booking"], selected)
+
+    active_bookings = [booking for booking in bookings if booking.status != "cancelled"]
+    cancelled_bookings = [booking for booking in bookings if booking.status == "cancelled"]
+    selected_booking_id = None
+    raw_selected = request.GET.get("turno")
+    if raw_selected:
+        try:
+            candidate = int(raw_selected)
+        except (TypeError, ValueError):
+            candidate = 0
+        if any(
+            booking.pk == candidate
+            and booking.status in ("booked", "pending_payment")
+            for booking in active_bookings
         ):
-            booking.pay_action = "marcar_pagado"
-            booking.pay_label = "Cobrar saldo"
-        elif booking.is_paid and booking.deposit_amount > 0 and booking.balance_paid:
-            booking.pay_action = "marcar_pendiente"
-            booking.pay_label = "Marcar saldo pendiente"
-        elif booking.is_paid:
-            booking.pay_action = "marcar_pendiente"
-            booking.pay_label = (
-                "Marcar seña pendiente" if booking.deposit_amount > 0 else "Marcar pendiente"
-            )
-        else:
-            booking.pay_action = "marcar_pagado"
-            if booking.status == "pending_payment":
-                booking.pay_label = "Confirmar seña"
-            elif booking.deposit_amount > 0:
-                booking.pay_label = "Marcar seña abonada"
-            else:
-                booking.pay_label = "Marcar abonado"
+            selected_booking_id = candidate
 
     return render(
         request,
@@ -3042,6 +3070,9 @@ def panel_turnos(request):
             "next_day": day + timedelta(days=1),
             "board": board,
             "bookings": bookings,
+            "active_bookings": active_bookings,
+            "cancelled_bookings": cancelled_bookings,
+            "selected_booking_id": selected_booking_id,
             "day_total": day_total,
             "day_paid": day_paid,
             "day_balance": day_balance,

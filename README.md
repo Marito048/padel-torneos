@@ -17,10 +17,11 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
   paga en el club**. Sin token se mantiene el cobro manual. El panel registra la seña y el saldo
   por separado, permite marcar ambos como cobrados, elegir el medio de pago y lleva la **caja**
   con movimientos, devoluciones, cierres diarios y exportación CSV. Cada reserva puede avisarse por **WhatsApp**:
-  el cliente al complejo desde la confirmación y el panel al cliente con el botón «Avisar»
+  el cliente al complejo desde la confirmación y el panel al cliente con el botón «Avisar por WhatsApp»
   (wa.me), y con CallMeBot configurado el complejo recibe el aviso automático. En el panel,
-  **Turnos** muestra la agenda del día, permite cargar reservas manuales, bloquear horarios
-  (mantenimiento) y liberar/cancelar; **Turnos → Horarios y feriados** configura por complejo el
+  **Turnos** muestra una agenda única del día: cada tarjeta abre el detalle con cobros, WhatsApp,
+  devolución y cancelación; también permite cargar reservas manuales y bloquear horarios
+  (mantenimiento); **Turnos → Horarios y feriados** configura por complejo el
   primer turno, el cierre y la duración (1,5 h por defecto) para días hábiles, sábados y domingos,
   con **pausas** que cortan la secuencia (al terminar la pausa los turnos continúan con la misma
   duración) y **fechas especiales** (feriados) con cierre total o horario propio.

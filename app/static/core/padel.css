@@ -795,7 +795,136 @@ a.cal-cell:hover { border-color: var(--ps-green); background: #e2f0e8; }
 .turnos-board { overflow-x: auto; margin-bottom: .3rem; }
 .turnos-board .data-table { min-width: 560px; }
 .turnos-board th[scope="row"] { white-space: nowrap; font-size: .82rem; color: var(--ps-muted); }
-.turnos-cell { display: grid; gap: .3rem; justify-items: stretch; }
+.turnos-cell { vertical-align: top; }
+
+.turnos-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    gap: 1rem;
+    align-items: start;
+    margin-bottom: 1rem;
+}
+.turnos-layout .turnos-board {
+    margin-bottom: 0;
+    background: var(--ps-surface);
+    border-radius: var(--ps-radius);
+    box-shadow: var(--ps-shadow);
+    padding: .6rem;
+}
+.turnos-layout .data-table th,
+.turnos-layout .data-table td { vertical-align: top; }
+
+.turno-card {
+    display: grid;
+    gap: .35rem;
+    align-content: start;
+    min-height: 104px;
+    padding: .55rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+}
+.turno-card--busy { background: #fff8f7; border-color: #f0c7c2; }
+.turno-card--selected { background: #fbfefc; border-color: var(--ps-green); box-shadow: 0 0 0 3px var(--ps-green-soft); }
+.turno-card--blocked { background: #f5f7f9; border-color: #d9dfe6; }
+.turno-card--free { background: #f7fcf9; border: 1px dashed #9dc9b0; }
+.turno-card__main {
+    display: grid;
+    gap: .22rem;
+    color: inherit;
+    text-decoration: none;
+    border-radius: 7px;
+}
+.turno-card__main:hover { color: inherit; }
+.turno-card__main:focus-visible { outline: 2px solid var(--ps-green); outline-offset: 2px; }
+.turno-card__name { font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+.turno-card__meta { color: var(--ps-muted); font-size: .76rem; line-height: 1.25; }
+.turno-card .status-pill { justify-self: start; padding: .22rem .55rem; font-size: .72rem; }
+.turno-card__actions { display: flex; gap: .3rem; flex-wrap: wrap; align-items: center; margin-top: .1rem; }
+.turno-card__actions .btn { flex: 1 1 auto; }
+.turno-card__manage {
+    border: 0;
+    background: transparent;
+    color: var(--ps-green-dark);
+    cursor: pointer;
+    font: inherit;
+    font-size: .78rem;
+    font-weight: 750;
+    padding: .15rem 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.turno-card__manage:hover { color: var(--ps-text); }
+.turno-card--free .btn,
+.turno-card--free .inline-form,
+.turno-card--blocked .inline-form,
+.turno-card--blocked .btn { width: 100%; }
+
+.turno-detail-panel {
+    position: sticky;
+    top: 1rem;
+    background: var(--ps-surface);
+    border: 1px solid rgba(19, 35, 59, .06);
+    border-radius: var(--ps-radius);
+    box-shadow: var(--ps-shadow);
+    padding: 1rem;
+}
+.turno-detail-empty { color: var(--ps-muted); font-size: .9rem; }
+.turno-detail-empty p { margin: .5rem 0 0; }
+.turno-detail__kicker {
+    display: inline-flex;
+    color: var(--ps-muted);
+    font-size: .7rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+.turno-detail__top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.turno-detail__close { display: none; }
+.turno-detail h2 { margin: .3rem 0 .15rem; font-size: 1.15rem; overflow-wrap: anywhere; }
+.turno-detail__time { margin: 0 0 .8rem; color: var(--ps-muted); font-size: .82rem; }
+.turno-detail__rows { display: grid; gap: .35rem; margin: .7rem 0; }
+.turno-detail__row {
+    display: flex;
+    justify-content: space-between;
+    gap: .7rem;
+    border-bottom: 1px solid #edf1ef;
+    padding-bottom: .4rem;
+    font-size: .85rem;
+}
+.turno-detail__row:last-child { border-bottom: 0; }
+.turno-detail__row span { color: var(--ps-muted); }
+.turno-detail__row strong { text-align: right; }
+.turno-detail__note {
+    margin: .7rem 0;
+    padding: .55rem .65rem;
+    border-radius: 9px;
+    background: #f5f9f6;
+    color: var(--ps-muted);
+    font-size: .8rem;
+}
+.turno-detail__actions { display: grid; gap: .45rem; margin-top: .8rem; }
+.turno-detail__actions .btn { width: 100%; }
+.turno-detail__form { display: grid; gap: .45rem; margin: 0; }
+.turno-detail__field { display: grid; gap: .25rem; font-size: .82rem; font-weight: 650; }
+.turno-detail__field select { width: 100%; min-height: 40px; }
+.turno-detail__hint { margin: .8rem 0 0; color: var(--ps-muted); font-size: .75rem; }
+.turno-detail[hidden], .turno-detail-empty[hidden] { display: none !important; }
+
+.turno-new { margin-top: 1rem; }
+.turno-new > summary { cursor: pointer; font-weight: 800; font-size: 1rem; }
+.turno-new[open] > summary { margin-bottom: .7rem; }
+.turno-new .form-grid { margin-top: .5rem; }
+
+.turno-cancelled {
+    margin-top: 1rem;
+    background: var(--ps-surface);
+    border-radius: var(--ps-radius);
+    box-shadow: var(--ps-shadow);
+    padding: .75rem 1rem;
+}
+.turno-cancelled > summary { cursor: pointer; font-weight: 750; }
+.turno-cancelled__list { display: grid; gap: .35rem; margin: .65rem 0 0; padding-left: 1.1rem; font-size: .85rem; }
+.turno-cancelled__list .status-pill { margin-left: .25rem; padding: .18rem .5rem; font-size: .7rem; }
 
 .slot {
     display: inline-flex; align-items: center; justify-content: center; width: 100%;
@@ -819,6 +948,38 @@ a.cal-cell:hover { border-color: var(--ps-green); background: #e2f0e8; }
 .pause-form { margin-top: .4rem; }
 .pause-form label { display: grid; gap: .25rem; font-weight: 650; font-size: .85rem; }
 .pause-form input { min-height: 40px; }
+
+@media (max-width: 900px) {
+    .turnos-layout { grid-template-columns: 1fr; }
+    .turno-detail-panel {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        overflow-y: auto;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 1rem 1rem 2rem;
+    }
+    .turno-detail-panel.is-open { display: block; }
+    .turno-detail__close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 42px;
+        height: 42px;
+        border: 1px solid #d8e1df;
+        border-radius: 10px;
+        background: #fff;
+        color: var(--ps-text);
+        cursor: pointer;
+        font-size: 1.4rem;
+        line-height: 1;
+    }
+    body.turno-detail-open { overflow: hidden; }
+}
 
 @media (max-width: 640px) {
     .padel-page--public .pub-nav,
