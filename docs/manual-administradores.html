@@ -596,7 +596,7 @@
   <section class="chapter" id="agenda">
     <span class="chapter-kicker">04 · Operación diaria</span>
     <h2>Agenda de turnos</h2>
-    <p class="lead">En <span class="ui">Turnos</span> ves la agenda del día por cancha. Podés cambiar de complejo y de fecha, cargar reservas manuales, bloquear horarios y liberar turnos.</p>
+    <p class="lead">En <span class="ui">Turnos</span> ves la agenda del día por cancha. La grilla es la única agenda: al seleccionar un turno se abre el detalle con el cliente, el pago y las acciones. En el celular, el detalle aparece como una hoja completa.</p>
 
     <h3>Cómo reserva un cliente</h3>
     <ol>
@@ -620,8 +620,12 @@
       </tbody>
     </table>
 
+    <h3>Detalle del turno</h3>
+    <p>Al tocar una tarjeta ocupada, el panel de detalle muestra el precio, la seña, el saldo, lo cobrado y el origen. Desde ahí podés cobrar la seña o el saldo, avisar por WhatsApp, registrar una devolución o cancelar el turno.</p>
+    <p>Los horarios libres tienen <span class="ui">Reservar</span> y <span class="ui">Bloquear</span>. En los turnos ocupados, la tarjeta muestra la próxima acción de cobro y el enlace <span class="ui">Gestionar</span> para abrir el detalle completo.</p>
+
     <h3>Reservar desde el panel</h3>
-    <p>En <strong>Nuevo turno / bloqueo</strong> elegí cancha, horario, cliente, WhatsApp y nota. El botón <span class="ui">Reservar turno</span> crea la reserva con el precio vigente.</p>
+    <p>Desplegá <strong>+ Nuevo turno o bloqueo</strong>, elegí cancha, horario, cliente, WhatsApp y nota. El botón <span class="ui">Reservar turno</span> crea la reserva con el precio vigente. Si tocás <span class="ui">Reservar</span> en un horario libre, el formulario se abre con la cancha y la hora ya elegidas.</p>
     <div class="callout callout--info">
       <strong>Diferencia importante:</strong> las reservas cargadas desde el panel <strong>no generan seña online</strong>. Quedan como pago total en el club. Para registrar el cobro, usá <span class="ui">Marcar abonado</span>.
     </div>
@@ -630,7 +634,7 @@
     <p>Usá <span class="ui">Bloquear</span> para mantenimiento, clase interna o cualquier uso que no sea una reserva de cliente. El horario deja de estar disponible en la página pública. Para volver a liberarlo, usá <span class="ui">Liberar</span>.</p>
 
     <h3>Liberar o cancelar</h3>
-    <p>El botón <span class="ui">Liberar</span> de la grilla o <span class="ui">Cancelar</span> de la tabla cancela la reserva y libera el horario. Si la reserva tenía seña o saldo cobrado, el sistema avisa que corresponde devolución o acuerdo con el cliente: <strong>no reintegra dinero automáticamente</strong>.</p>
+    <p>Para un horario bloqueado, usá <span class="ui">Liberar</span> en la tarjeta. Para cancelar una reserva, abrí <span class="ui">Gestionar</span> y usá <span class="ui">Cancelar turno</span>. El horario vuelve a quedar libre. Si la reserva tenía seña o saldo cobrado, el sistema avisa que corresponde devolución o acuerdo con el cliente: <strong>no reintegra dinero automáticamente</strong>.</p>
 
     <h3>Totales del día</h3>
     <table>
@@ -644,7 +648,7 @@
       </tbody>
     </table>
     <p>Estos totales son operativos y se calculan con el estado de cada turno. Para ver el detalle por medio de pago, las devoluciones y el neto real, usá <span class="ui">Caja y contabilidad</span>.</p>
-    <p>El botón <span class="ui">Avisar</span> abre WhatsApp con el mensaje de confirmación ya escrito para el cliente. Aparece en reservas confirmadas con teléfono cargado.</p>
+    <p>Dentro del detalle, <span class="ui">Avisar por WhatsApp</span> abre la conversación con el mensaje de confirmación ya escrito para el cliente. Aparece en reservas confirmadas con teléfono cargado.</p>
   </section>
 
   <section class="chapter" id="cobros">
@@ -1020,7 +1024,7 @@
     <ul>
       <li><strong>WhatsApp del complejo:</strong> cargalo en <span class="ui">Precio y avisos</span> con código de país y solo números.</li>
       <li><strong>CallMeBot API key:</strong> opcional. Se obtiene una vez desde el WhatsApp del complejo y permite el aviso automático.</li>
-      <li><strong>Botón Avisar:</strong> en la agenda, abre WhatsApp con el mensaje de confirmación ya escrito para el cliente.</li>
+      <li><strong>Botón Avisar por WhatsApp:</strong> dentro del detalle del turno, abre WhatsApp con el mensaje de confirmación ya escrito para el cliente.</li>
       <li><strong>Confirmar por WhatsApp:</strong> con el número cargado, la confirmación del cliente también muestra este botón para que avise al complejo.</li>
       <li><strong>Aviso automático:</strong> el complejo recibe un mensaje con los datos de la reserva nueva. En un pago online, se envía cuando Mercado Pago aprueba la seña.</li>
     </ul>
