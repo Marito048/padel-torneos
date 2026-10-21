@@ -230,6 +230,9 @@
                     <button class="btn btn--xs btn--secondary" type="submit">{{ booking.pay_label }}</button>
                   </form>
                 {% endif %}
+                {% if booking.is_paid or booking.balance_paid %}
+                  <a class="btn btn--xs btn--secondary" href="{% url 'panel_turnos_caja' %}?complejo={{ selected_complex.slug }}&desde={{ day|date:'Y-m-d' }}&hasta={{ day|date:'Y-m-d' }}&codigo={{ booking.code }}#devolucion">Devolución</a>
+                {% endif %}
                 {% if booking.status != "cancelled" %}
                   <form method="post" action="{% url 'panel_turno_accion' %}" class="inline-form" data-confirm="¿Cancelar este turno?">
                     {% csrf_token %}

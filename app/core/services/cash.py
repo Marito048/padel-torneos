@@ -260,7 +260,7 @@ def record_manual_refund(booking, amount, method: str, user, note: str = "") -> 
     with transaction.atomic():
         # Serializa dos devoluciones simultáneas del mismo turno para que
         # ambas no puedan superar el dinero cobrado.
-        CourtBooking.objects.select_for_update().filter(pk=booking.pk).exists()
+        CourtBooking.objects.select_for_update().get(pk=booking.pk)
         available = refundable_amount(booking)
         if amount > available:
             raise ValidationError(
@@ -335,6 +335,8 @@ def summary_for_day(complex_obj, day) -> dict:
 
 def close_day(complex_obj, day, user, note: str = "") -> CashClose:
     """Guarda una foto de los totales del día, sin bloquear movimientos futuros."""
+    if day > timezone.localdate():
+        raise ValidationError("No se puede cerrar la caja de una fecha futura.")
     if CashClose.objects.filter(complex=complex_obj, date=day).exists():
         raise ValidationError("La caja de ese día ya está cerrada.")
     summary = summary_for_day(complex_obj, day)

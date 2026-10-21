@@ -3084,9 +3084,11 @@ def panel_turnos_caja(request):
     refundable = Decimal("0.00")
     refund_code = (request.GET.get("codigo") or "").strip()
     if selected:
-        bookings = (
-            CourtBooking.objects.filter(complex=selected, date__gte=start, date__lte=end)
-            .exclude(status="cancelled")
+        bookings = CourtBooking.objects.filter(
+            complex=selected,
+            status="booked",
+            date__gte=start,
+            date__lte=end,
         )
         pending_balance = sum((booking.balance_amount for booking in bookings), Decimal("0.00"))
         closes = CashClose.objects.filter(
