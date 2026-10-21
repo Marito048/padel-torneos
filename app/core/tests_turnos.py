@@ -747,14 +747,16 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
                 content_type="application/json",
             )
             fetch.return_value = self.payment_payload(booking, status="refunded")
-            self.client.post(
-                reverse("turno_pago_webhook", args=[self.complex.slug]),
-                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
-                content_type="application/json",
-            )
+            for _ in range(2):
+                self.client.post(
+                    reverse("turno_pago_webhook", args=[self.complex.slug]),
+                    data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                    content_type="application/json",
+                )
         booking.refresh_from_db()
         self.assertFalse(booking.is_paid)
         self.assertEqual(booking.payment_status, "refunded")
+        self.assertEqual(CourtPayment.objects.filter(booking=booking, kind="refund").count(), 1)
         refund = CourtPayment.objects.get(booking=booking, kind="refund")
         self.assertEqual(refund.amount, Decimal("2400.00"))
         self.assertEqual(refund.method, "mercadopago")
