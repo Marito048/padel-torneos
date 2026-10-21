@@ -1,0 +1,226 @@
+{% extends "panel/base_panel.html" %}
+
+{% block title %}Caja y contabilidad{% endblock %}
+
+{% block content %}
+<section class="panel-section">
+  <h1>Caja y contabilidad</h1>
+  <p class="muted">Cobros de señas y saldos, devoluciones, medios de pago y cierres diarios.</p>
+  <div class="padel-actions">
+    <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Volver a la agenda</a>
+    <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_ajustes' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Precio y avisos</a>
+  </div>
+</section>
+
+{% if not complexes %}
+  <p class="alert alert--info">Tu usuario todavía no tiene complejos asignados. Pedile a la administración que te dé acceso.</p>
+{% else %}
+  <form method="get" action="{% url 'panel_turnos_caja' %}" class="turnos-filter">
+    <label>Complejo
+      <select name="complejo" onchange="this.form.submit()">
+        {% for complex in complexes %}
+          <option value="{{ complex.slug }}"{% if selected_complex and complex.pk == selected_complex.pk %} selected{% endif %}>{{ complex.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Desde
+      <input type="date" name="desde" value="{{ start|date:'Y-m-d' }}">
+    </label>
+    <label>Hasta
+      <input type="date" name="hasta" value="{{ end|date:'Y-m-d' }}">
+    </label>
+    <label>Medio
+      <select name="metodo">
+        <option value="">Todos</option>
+        {% for code, label in payment_methods %}
+          <option value="{{ code }}"{% if method == code %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="form-actions">
+      <button class="btn btn--primary btn--sm" type="submit">Ver movimientos</button>
+    </div>
+  </form>
+
+  <div class="stat-grid">
+    <article class="stat-card">
+      <div class="stat-card__value">${{ summary.total_income|floatformat:"-2" }}</div>
+      <div class="stat-card__label">Cobrado en el período</div>
+    </article>
+    <article class="stat-card">
+      <div class="stat-card__value">${{ summary.total_outgoing|floatformat:"-2" }}</div>
+      <div class="stat-card__label">Devoluciones y reversiones</div>
+    </article>
+    <article class="stat-card">
+      <div class="stat-card__value">${{ summary.net_total|floatformat:"-2" }}</div>
+      <div class="stat-card__label">Neto en caja</div>
+    </article>
+    <article class="stat-card">
+      <div class="stat-card__value">${{ pending_balance|floatformat:"-2" }}</div>
+      <div class="stat-card__label">Saldo pendiente en club</div>
+    </article>
+  </div>
+  <p class="help">
+    «Cobrado» suma seña, saldo y pagos totales. «Neto» descuenta devoluciones, contracargos y
+    reversiones. El saldo pendiente se calcula sobre los turnos con fecha dentro del período,
+    excluyendo los cancelados.
+  </p>
+
+  <section class="panel-section">
+    <h2>Resumen por medio de pago</h2>
+  </section>
+  <div class="turnos-board">
+    <table class="data-table">
+      <thead>
+        <tr><th>Medio</th><th>Cobrado</th><th>Egresos</th><th>Neto</th></tr>
+      </thead>
+      <tbody>
+        {% for row in method_rows %}
+          <tr>
+            <td>{{ row.label }}</td>
+            <td>${{ row.income|floatformat:"-2" }}</td>
+            <td>${{ row.outgoing|floatformat:"-2" }}</td>
+            <td>${{ row.net|floatformat:"-2" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <section class="panel-section">
+    <h2>Movimientos</h2>
+    <p class="help">Cada cobro, devolución o corrección queda registrado con fecha, medio y usuario. No se edita el historial: las correcciones agregan un movimiento de reversión.</p>
+  </section>
+  {% if summary.payments %}
+    <div class="turnos-board">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Fecha de caja</th>
+            <th>Turno</th>
+            <th>Cliente</th>
+            <th>Tipo</th>
+            <th>Medio</th>
+            <th>Monto</th>
+            <th>Registrado por</th>
+            <th>Nota</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for payment in summary.payments %}
+            <tr>
+              <td>{{ payment.paid_at|date:"d/m/Y H:i" }}</td>
+              <td>
+                {{ payment.booking_code|default:"—" }}
+                <span class="slot-note">
+                  {{ payment.booking_date|date:"d/m/Y"|default:"—" }}
+                  {% if payment.booking_start %}· {{ payment.booking_start|time:"H:i" }}{% endif %}
+                  {% if payment.court_name %}· {{ payment.court_name }}{% endif %}
+                </span>
+              </td>
+              <td>{{ payment.customer_name|default:"—" }}</td>
+              <td>{{ payment.get_kind_display }}</td>
+              <td>{{ payment.get_method_display }}</td>
+              <td>
+                {% if payment.is_outgoing %}-${{ payment.amount|floatformat:"-2" }}{% else %}+${{ payment.amount|floatformat:"-2" }}{% endif %}
+              </td>
+              <td>{{ payment.collected_by_name|default:"—" }}</td>
+              <td>{{ payment.note|default:"—" }}{% if payment.reverses %}<span class="slot-note">Revierte: {{ payment.reverses.get_kind_display }} ${{ payment.reverses.amount|floatformat:"-2" }}</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="padel-actions" style="margin-top: .8rem;">
+      <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_caja_export' %}?{{ request.GET.urlencode }}">Exportar CSV</a>
+    </div>
+  {% else %}
+    <p class="help">No hay movimientos para los filtros elegidos.</p>
+  {% endif %}
+
+  <div class="padel-grid" style="margin-top: 1.4rem;">
+    <article class="padel-card">
+      <h2>Cerrar caja de un día</h2>
+      <p>El cierre guarda una foto de los totales y quién lo registró. No bloquea el día: si después se agrega un movimiento con esa fecha, el reporte muestra el total actualizado y el cierre queda como constancia.</p>
+      <form method="post" action="{% url 'panel_turnos_caja_cerrar' %}" class="form-grid">
+        {% csrf_token %}
+        <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+        <input type="hidden" name="desde" value="{{ start|date:'Y-m-d' }}">
+        <input type="hidden" name="hasta" value="{{ end|date:'Y-m-d' }}">
+        <label>Fecha
+          <input type="date" name="fecha" value="{{ today|date:'Y-m-d' }}" required>
+        </label>
+        <label>Nota (opcional)
+          <input type="text" name="nota" maxlength="200" placeholder="Ej: cierre turno noche">
+        </label>
+        <div class="form-actions">
+          <button class="btn btn--primary" type="submit">Cerrar caja</button>
+        </div>
+      </form>
+    </article>
+
+    <article class="padel-card" id="devolucion">
+      <h2>Registrar devolución</h2>
+      <p>Para devolver dinero de un turno. No cancela el turno ni reintegra automáticamente un pago de Mercado Pago: primero hacé la devolución en Mercado Pago y después registrala acá para que la caja quede bien.</p>
+      {% if refund_booking %}
+        <p class="alert alert--info">
+          Turno {{ refund_booking.code }} · {{ refund_booking.customer_name|default:"Sin nombre" }} ·
+          máximo devolvible: ${{ refundable|floatformat:"-2" }}
+        </p>
+      {% endif %}
+      <form method="post" action="{% url 'panel_turnos_caja_devolucion' %}" class="form-grid">
+        {% csrf_token %}
+        <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
+        <input type="hidden" name="desde" value="{{ start|date:'Y-m-d' }}">
+        <input type="hidden" name="hasta" value="{{ end|date:'Y-m-d' }}">
+        <label>Código del turno
+          <input type="text" name="codigo" maxlength="12" value="{{ refund_code }}" placeholder="Ej: VJUMCMUN" required>
+        </label>
+        <label>Monto
+          <input type="text" name="monto" inputmode="decimal" placeholder="Ej: 3000,00" required>
+        </label>
+        <label>Medio
+          <select name="metodo">
+            {% for code, label in payment_methods %}
+              <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Nota (opcional)
+          <input type="text" name="nota" maxlength="200" placeholder="Ej: devolución por lluvia">
+        </label>
+        <div class="form-actions">
+          <button class="btn btn--danger" type="submit">Registrar devolución</button>
+        </div>
+      </form>
+    </article>
+  </div>
+
+  <section class="panel-section">
+    <h2>Cierres registrados</h2>
+  </section>
+  {% if closes %}
+    <div class="turnos-board">
+      <table class="data-table">
+        <thead>
+          <tr><th>Fecha</th><th>Cerrado por</th><th>Cobrado</th><th>Egresos</th><th>Neto</th><th>Nota</th></tr>
+        </thead>
+        <tbody>
+          {% for close in closes %}
+            <tr>
+              <td>{{ close.date|date:"d/m/Y" }}</td>
+              <td>{{ close.closed_by_name|default:"—" }}</td>
+              <td>${{ close.total_income|floatformat:"-2" }}</td>
+              <td>${{ close.total_outgoing|floatformat:"-2" }}</td>
+              <td>${{ close.net_total|floatformat:"-2" }}</td>
+              <td>{{ close.note|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="help">Todavía no hay cierres en el período.</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

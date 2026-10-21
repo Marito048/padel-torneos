@@ -9,12 +9,13 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import re
 from datetime import date as date_cls, time as time_cls, timedelta
 from decimal import Decimal, InvalidOperation
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -27,7 +28,7 @@ from django.core.mail import send_mail
 from django.core.validators import URLValidator, validate_email
 from django.db import IntegrityError, transaction
 from django.db.models import Count, ProtectedError, Q
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -36,10 +37,12 @@ from django.views.decorators.http import require_POST
 
 from core import access
 from core.models import (
+    CashClose,
     Complex,
     Court,
     CourtBooking,
     CourtDateOverride,
+    CourtPayment,
     CourtSchedule,
     Invitation,
     Match,
@@ -55,6 +58,7 @@ from core.models import (
     ZoneTeam,
 )
 from core.notifications import notify_court_booking, notify_new_signup_request, notify_tournament_team_signup
+from core.services import cash as cash_service
 from core.services import draws
 from core.services import matches as matches_service
 from core.services import payments as payments_service
@@ -2499,6 +2503,18 @@ def _apply_mp_payment(booking, payment: dict) -> bool:
         booking.payment_init_point = ""
 
     booking.save()
+    if status == "approved":
+        cash_service.record_online_deposit(
+            booking,
+            payment_id,
+            amount=paid_amount if paid_amount is not None else None,
+        )
+    elif status in ("refunded", "charged_back"):
+        cash_service.record_online_refund(
+            booking,
+            payment_id,
+            kind="refund" if status == "refunded" else "chargeback",
+        )
     if status == "approved" and not was_paid and booking.status == "booked":
         notify_court_booking(booking)
     return True
@@ -2933,6 +2949,28 @@ def _turnos_complex(request):
     return complexes, selected
 
 
+def _caja_range(request):
+    today = timezone.localdate()
+    raw_start = request.GET.get("desde") or request.POST.get("desde")
+    raw_end = request.GET.get("hasta") or request.POST.get("hasta")
+    start = _parse_date(raw_start, today.replace(day=1))
+    end = _parse_date(raw_end, today)
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+def _caja_back_url(selected, start, end, method=""):
+    params = {
+        "complejo": selected.slug,
+        "desde": start.isoformat(),
+        "hasta": end.isoformat(),
+    }
+    if method:
+        params["metodo"] = method
+    return f"{reverse('panel_turnos_caja')}?{urlencode(params)}"
+
+
 @login_required
 def panel_turnos(request):
     """Agenda del día: ocupación, carga manual, bloqueos, cobros y cancelaciones."""
@@ -3013,6 +3051,207 @@ def panel_turnos(request):
 
 
 @login_required
+def panel_turnos_caja(request):
+    """Libro de caja: cobros, devoluciones, resumen y cierres por complejo."""
+    complexes, selected = _turnos_complex(request)
+    start, end = _caja_range(request)
+    method = (request.GET.get("metodo") or "").strip()
+    if method not in cash_service.PAYMENT_METHODS:
+        method = ""
+
+    summary = cash_service.summary_for_range(selected, start, end, method=method) if selected else {
+        "payments": [],
+        "count": 0,
+        "total_income": Decimal("0.00"),
+        "total_outgoing": Decimal("0.00"),
+        "net_total": Decimal("0.00"),
+        "by_method": {},
+    }
+    method_rows = [
+        {
+            "code": code,
+            "label": label,
+            "income": summary["by_method"].get(code, {}).get("income", Decimal("0.00")),
+            "outgoing": summary["by_method"].get(code, {}).get("outgoing", Decimal("0.00")),
+            "net": summary["by_method"].get(code, {}).get("net", Decimal("0.00")),
+        }
+        for code, label in CourtPayment.METHOD
+    ]
+
+    pending_balance = Decimal("0.00")
+    closes = []
+    refund_booking = None
+    refundable = Decimal("0.00")
+    refund_code = (request.GET.get("codigo") or "").strip()
+    if selected:
+        bookings = (
+            CourtBooking.objects.filter(complex=selected, date__gte=start, date__lte=end)
+            .exclude(status="cancelled")
+        )
+        pending_balance = sum((booking.balance_amount for booking in bookings), Decimal("0.00"))
+        closes = CashClose.objects.filter(
+            complex=selected, date__gte=start, date__lte=end
+        ).select_related("closed_by")
+        if refund_code:
+            refund_booking = CourtBooking.objects.filter(
+                complex=selected, code__iexact=refund_code
+            ).first()
+            if refund_booking is not None:
+                refundable = cash_service.refundable_amount(refund_booking)
+
+    return render(
+        request,
+        "panel/turnos_caja.html",
+        {
+            "complexes": complexes,
+            "selected_complex": selected,
+            "start": start,
+            "end": end,
+            "today": timezone.localdate(),
+            "method": method,
+            "method_rows": method_rows,
+            "summary": summary,
+            "pending_balance": pending_balance,
+            "closes": closes,
+            "refund_booking": refund_booking,
+            "refund_code": refund_code,
+            "refundable": refundable,
+            "payment_methods": CourtPayment.METHOD,
+        },
+    )
+
+
+@login_required
+@require_POST
+def panel_turnos_caja_cerrar(request):
+    complex_obj = get_object_or_404(Complex, slug=(request.POST.get("complejo") or ""))
+    access.require_complex_access(request.user, complex_obj)
+    day = _parse_date(request.POST.get("fecha"))
+    if day is None:
+        messages.error(request, "Elegí una fecha válida para cerrar la caja.")
+        start, end = _caja_range(request)
+        return redirect(_caja_back_url(complex_obj, start, end))
+    if day > timezone.localdate():
+        messages.error(request, "No se puede cerrar la caja de una fecha futura.")
+        return redirect(_caja_back_url(complex_obj, day, day))
+    try:
+        cash_service.close_day(
+            complex_obj,
+            day,
+            request.user,
+            note=(request.POST.get("nota") or "").strip(),
+        )
+    except ValidationError as exc:
+        messages.error(request, _error_text(exc))
+        return redirect(_caja_back_url(complex_obj, day, day))
+    messages.success(request, f"Caja del {day:%d/%m/%Y} cerrada correctamente.")
+    return redirect(_caja_back_url(complex_obj, day, day))
+
+
+@login_required
+@require_POST
+def panel_turnos_caja_devolucion(request):
+    complex_obj = get_object_or_404(Complex, slug=(request.POST.get("complejo") or ""))
+    access.require_complex_access(request.user, complex_obj)
+    code = (request.POST.get("codigo") or "").strip()
+    booking = CourtBooking.objects.filter(complex=complex_obj, code__iexact=code).first()
+    start, end = _caja_range(request)
+    if booking is None:
+        messages.error(request, "No encontramos un turno con ese código en el complejo.")
+        return redirect(_caja_back_url(complex_obj, start, end))
+
+    raw_amount = (request.POST.get("monto") or "").strip().replace("$", "").replace(" ", "")
+    if "," in raw_amount:
+        # Formato local: 1.234,56. Si sólo hay coma, también funciona 1234,56.
+        raw_amount = raw_amount.replace(".", "").replace(",", ".")
+    try:
+        amount = Decimal(raw_amount)
+    except (InvalidOperation, ValueError):
+        messages.error(request, "Ingresá un importe válido para la devolución.")
+        return redirect(_caja_back_url(complex_obj, start, end))
+    method = (request.POST.get("metodo") or "cash").strip()
+    if method not in cash_service.PAYMENT_METHODS:
+        method = "cash"
+    try:
+        payment = cash_service.record_manual_refund(
+            booking,
+            amount,
+            method,
+            request.user,
+            note=(request.POST.get("nota") or "").strip(),
+        )
+    except ValidationError as exc:
+        messages.error(request, _error_text(exc))
+        return redirect(_caja_back_url(complex_obj, start, end))
+    messages.success(
+        request,
+        f"Devolución de ${payment.amount:.2f} registrada para el turno {booking.code}.",
+    )
+    return redirect(_caja_back_url(complex_obj, start, end))
+
+
+@login_required
+def panel_turnos_caja_export(request):
+    """Exporta los movimientos filtrados para abrir en una planilla."""
+    complexes, selected = _turnos_complex(request)
+    if selected is None:
+        return HttpResponse("No hay un complejo disponible.", status=400)
+    start, end = _caja_range(request)
+    method = (request.GET.get("metodo") or "").strip()
+    if method not in cash_service.PAYMENT_METHODS:
+        method = ""
+    summary = cash_service.summary_for_range(selected, start, end, method=method)
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        f'attachment; filename="caja-{selected.slug}-{start:%Y%m%d}-{end:%Y%m%d}.csv"'
+    )
+    response.write("\ufeff")
+    writer = csv.writer(response, delimiter=";")
+    writer.writerow(
+        [
+            "Fecha de caja",
+            "Tipo",
+            "Medio",
+            "Monto",
+            "Impacto",
+            "Código de turno",
+            "Fecha del turno",
+            "Hora del turno",
+            "Cancha",
+            "Cliente",
+            "Registrado por",
+            "Nota",
+            "ID externo",
+        ]
+    )
+    for payment in summary["payments"]:
+        paid_at = timezone.localtime(payment.paid_at)
+        writer.writerow(
+            [
+                paid_at.strftime("%d/%m/%Y %H:%M"),
+                payment.get_kind_display(),
+                payment.get_method_display(),
+                f"{payment.amount:.2f}",
+                "Egreso" if payment.is_outgoing else "Ingreso",
+                payment.booking_code or (payment.booking.code if payment.booking_id else ""),
+                payment.booking_date.strftime("%d/%m/%Y") if payment.booking_date else "",
+                payment.booking_start.strftime("%H:%M") if payment.booking_start else "",
+                payment.court_name,
+                payment.customer_name,
+                payment.collected_by_name,
+                payment.note,
+                payment.external_id,
+            ]
+        )
+    writer.writerow([])
+    writer.writerow(["", "", "", "", "Total cobrado", f"{summary['total_income']:.2f}"])
+    writer.writerow(["", "", "", "", "Total egresos", f"{summary['total_outgoing']:.2f}"])
+    writer.writerow(["", "", "", "", "Neto", f"{summary['net_total']:.2f}"])
+    return response
+
+
+@login_required
 def panel_turnos_horarios(request):
     """Configuración de horarios por tipo de día, pausas y fechas especiales."""
     complexes, selected = _turnos_complex(request)
@@ -3064,6 +3303,10 @@ def panel_turno_accion(request):
 
     if action in ("marcar_pagado", "marcar_pendiente"):
         booking = get_object_or_404(CourtBooking, pk=request.POST.get("turno_id") or 0, complex=complex_obj)
+        payment_method = (request.POST.get("metodo") or "cash").strip()
+        if payment_method not in cash_service.MANUAL_METHODS:
+            payment_method = "cash"
+        now = timezone.now()
         # Segundo paso del cobro: la seña ya está abonada y falta el saldo del club.
         charging_balance = (
             action == "marcar_pagado"
@@ -3073,38 +3316,86 @@ def panel_turno_accion(request):
             and booking.balance_amount > 0
         )
         uncharging_balance = action == "marcar_pendiente" and booking.balance_paid
-        if charging_balance:
-            booking.balance_paid = True
-            booking.balance_paid_at = timezone.now()
-            booking.save(update_fields=["balance_paid", "balance_paid_at"])
-            messages.success(request, "Saldo del turno marcado como cobrado.")
-        elif uncharging_balance:
-            booking.balance_paid = False
-            booking.balance_paid_at = None
-            booking.save(update_fields=["balance_paid", "balance_paid_at"])
-            messages.success(request, "Saldo del turno marcado como pendiente.")
-        else:
-            fields = ["is_paid", "paid_at", "payment_provider", "payment_status"]
-            if action == "marcar_pagado":
-                booking.is_paid = True
-                booking.paid_at = booking.paid_at or timezone.now()
-                booking.payment_provider = booking.payment_provider or "manual"
-                booking.payment_status = "manual"
-                if booking.status == "pending_payment":
-                    booking.status = "booked"
-                    booking.cancelled_at = None
-                    booking.payment_expires_at = None
-                    fields += ["status", "cancelled_at", "payment_expires_at"]
+        with transaction.atomic():
+            if charging_balance:
+                balance_amount = booking.balance_amount
+                booking.balance_paid = True
+                booking.balance_paid_at = now
+                booking.save(update_fields=["balance_paid", "balance_paid_at"])
+                cash_service.record_payment(
+                    booking,
+                    kind="balance",
+                    method=payment_method,
+                    amount=balance_amount,
+                    user=request.user,
+                    paid_at=now,
+                    note="Saldo cobrado en el club",
+                )
+                messages.success(request, "Saldo del turno marcado como cobrado.")
+            elif uncharging_balance:
+                booking.balance_paid = False
+                booking.balance_paid_at = None
+                booking.save(update_fields=["balance_paid", "balance_paid_at"])
+                cash_service.record_reversal(
+                    booking,
+                    kind="balance",
+                    user=request.user,
+                    note="Saldo marcado como pendiente desde el panel",
+                )
+                messages.success(request, "Saldo del turno marcado como pendiente.")
             else:
-                booking.is_paid = False
-                booking.paid_at = None
-                booking.payment_status = ""
-            booking.save(update_fields=fields)
-            if action == "marcar_pagado":
-                noun = "Seña" if booking.deposit_amount > 0 else "Turno"
-                messages.success(request, f"{noun} marcada como abonada.")
-            else:
-                messages.success(request, "Turno marcado como pendiente de pago.")
+                fields = ["is_paid", "paid_at", "payment_provider", "payment_status"]
+                paid_kind = "deposit" if booking.deposit_amount > 0 else "full"
+                if action == "marcar_pagado":
+                    is_online_confirmation = booking.status == "pending_payment"
+                    paid_method = "mercadopago" if is_online_confirmation else payment_method
+                    paid_external_id = booking.payment_id if is_online_confirmation else ""
+                    paid_amount = booking.deposit_amount if paid_kind == "deposit" else booking.price
+                    booking.is_paid = True
+                    booking.paid_at = booking.paid_at or now
+                    booking.payment_provider = booking.payment_provider or "manual"
+                    booking.payment_status = "manual"
+                    if is_online_confirmation:
+                        booking.status = "booked"
+                        booking.cancelled_at = None
+                        booking.payment_expires_at = None
+                        fields += ["status", "cancelled_at", "payment_expires_at"]
+                    booking.save(update_fields=fields)
+                    cash_service.record_payment(
+                        booking,
+                        kind=paid_kind,
+                        method=paid_method,
+                        amount=paid_amount,
+                        user=request.user,
+                        paid_at=now,
+                        external_id=paid_external_id,
+                        note=(
+                            "Seña confirmada desde el panel"
+                            if is_online_confirmation
+                            else ("Seña cobrada" if paid_kind == "deposit" else "Turno cobrado")
+                        ),
+                    )
+                    noun = "Seña" if booking.deposit_amount > 0 else "Turno"
+                    messages.success(request, f"{noun} marcada como abonada.")
+                else:
+                    booking.is_paid = False
+                    booking.paid_at = None
+                    booking.payment_status = ""
+                    booking.save(update_fields=fields)
+                    reversal = cash_service.record_reversal(
+                        booking,
+                        kind=paid_kind,
+                        user=request.user,
+                        note="Cobro marcado como pendiente desde el panel",
+                    )
+                    if reversal is not None and reversal.method == "mercadopago":
+                        messages.warning(
+                            request,
+                            "Se revirtió el registro, pero el dinero de Mercado Pago no se "
+                            "devuelve automáticamente. Registrá la devolución en Caja.",
+                        )
+                    else:
+                        messages.success(request, "Turno marcado como pendiente de pago.")
         return redirect(back)
 
     if action == "cancelar":

@@ -79,6 +79,18 @@ urlpatterns = [
     ),
     # Turnos de cancha (panel). Antes de gestion/<slug> para no chocar con ese patrón.
     path("gestion/turnos/", views.panel_turnos, name="panel_turnos"),
+    path("gestion/turnos/caja/", views.panel_turnos_caja, name="panel_turnos_caja"),
+    path("gestion/turnos/caja/cerrar/", views.panel_turnos_caja_cerrar, name="panel_turnos_caja_cerrar"),
+    path(
+        "gestion/turnos/caja/devolucion/",
+        views.panel_turnos_caja_devolucion,
+        name="panel_turnos_caja_devolucion",
+    ),
+    path(
+        "gestion/turnos/caja/exportar/",
+        views.panel_turnos_caja_export,
+        name="panel_turnos_caja_export",
+    ),
     path("gestion/turnos/horarios/", views.panel_turnos_horarios, name="panel_turnos_horarios"),
     path("gestion/turnos/accion/", views.panel_turno_accion, name="panel_turno_accion"),
     path("gestion/turnos/horarios/accion/", views.panel_horarios_accion, name="panel_horarios_accion"),

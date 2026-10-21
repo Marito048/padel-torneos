@@ -1,10 +1,12 @@
 from django.contrib import admin
 
 from .models import (
+    CashClose,
     Complex,
     Court,
     CourtBooking,
     CourtDateOverride,
+    CourtPayment,
     CourtSchedule,
     Invitation,
     Match,
@@ -126,6 +128,81 @@ class CourtBookingAdmin(ComplexScopedAdminMixin, admin.ModelAdmin):
     search_fields = ("customer_name", "customer_phone", "code", "payment_id")
     readonly_fields = ("code", "created_at", "cancelled_at", "paid_at", "balance_paid_at")
     date_hierarchy = "date"
+
+
+@admin.register(CourtPayment)
+class CourtPaymentAdmin(ComplexScopedAdminMixin, admin.ModelAdmin):
+    """Consulta de auditoría; los movimientos no se editan ni se borran."""
+
+    list_display = (
+        "paid_at",
+        "complex",
+        "kind",
+        "method",
+        "amount",
+        "booking_code",
+        "customer_name",
+        "collected_by_name",
+    )
+    list_filter = ("kind", "method", "complex", "paid_at")
+    search_fields = ("booking_code", "customer_name", "collected_by_name", "external_id", "note")
+    readonly_fields = (
+        "complex",
+        "booking",
+        "kind",
+        "method",
+        "amount",
+        "paid_at",
+        "collected_by",
+        "collected_by_name",
+        "note",
+        "external_id",
+        "reverses",
+        "created_at",
+        "booking_code",
+        "customer_name",
+        "court_name",
+        "booking_date",
+        "booking_start",
+    )
+    date_hierarchy = "paid_at"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CashClose)
+class CashCloseAdmin(ComplexScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("date", "complex", "closed_by_name", "total_income", "total_outgoing", "net_total")
+    list_filter = ("complex", "date")
+    readonly_fields = (
+        "complex",
+        "date",
+        "closed_at",
+        "closed_by",
+        "closed_by_name",
+        "total_income",
+        "total_outgoing",
+        "net_total",
+        "payment_breakdown",
+        "note",
+    )
+    date_hierarchy = "date"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Invitation)

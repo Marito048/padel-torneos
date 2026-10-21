@@ -415,6 +415,13 @@ body.padel-page {
 .form-actions { display: flex; gap: .6rem; flex-wrap: wrap; grid-column: 1 / -1; }
 .inline-form { display: inline-flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: 0; }
 .inline-form select { min-height: 42px; }
+.inline-form select.select--xs {
+    min-height: 30px;
+    width: auto;
+    padding: .2rem .4rem;
+    font-size: .78rem;
+    border-radius: 8px;
+}
 
 .btn--sm { min-height: 38px; padding: .5rem .8rem; font-size: .88rem; }
 .btn--xs { min-height: 32px; padding: .32rem .6rem; font-size: .8rem; border-radius: 9px; }

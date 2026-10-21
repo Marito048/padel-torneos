@@ -8,6 +8,7 @@
   <p class="muted">Precio del turno, cobro online de la seña con Mercado Pago y el WhatsApp que recibe el aviso de cada reserva.</p>
   <div class="padel-actions">
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Volver a la agenda</a>
+    <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_caja' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Caja y contabilidad</a>
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_horarios' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Horarios y feriados</a>
   </div>
 </section>

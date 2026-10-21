@@ -7,6 +7,7 @@
   <h1>Turnos</h1>
   <p class="muted">Agenda del día: ocupación por cancha, carga manual, bloqueos y cancelaciones.</p>
   <div class="padel-actions">
+    <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_caja' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Caja y contabilidad</a>
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_horarios' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Horarios y feriados</a>
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_ajustes' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Precio y avisos</a>
   </div>
@@ -218,6 +219,14 @@
                     <input type="hidden" name="fecha" value="{{ day|date:'Y-m-d' }}">
                     <input type="hidden" name="accion" value="{{ booking.pay_action }}">
                     <input type="hidden" name="turno_id" value="{{ booking.pk }}">
+                    {% if booking.pay_action == "marcar_pagado" and booking.status != "pending_payment" %}
+                      <select name="metodo" class="select--xs" aria-label="Medio de pago">
+                        <option value="cash">Efectivo</option>
+                        <option value="transfer">Transferencia</option>
+                        <option value="card">Tarjeta</option>
+                        <option value="other">Otro</option>
+                      </select>
+                    {% endif %}
                     <button class="btn btn--xs btn--secondary" type="submit">{{ booking.pay_label }}</button>
                   </form>
                 {% endif %}

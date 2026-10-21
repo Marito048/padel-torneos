@@ -16,7 +16,17 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from core.models import Complex, Court, CourtBooking, CourtDateOverride, CourtSchedule, SchedulePause
+from core.models import (
+    CashClose,
+    Complex,
+    Court,
+    CourtBooking,
+    CourtDateOverride,
+    CourtPayment,
+    CourtSchedule,
+    SchedulePause,
+)
+from core.services import cash as cash_service
 from core.services import payments as payments_service
 from core.services import schedule as schedule_service
 
@@ -719,6 +729,40 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
                 content_type="application/json",
             )
             notify.assert_called_once()
+        deposit = CourtPayment.objects.get(booking=booking, kind="deposit")
+        self.assertEqual(deposit.amount, Decimal("2400.00"))
+        self.assertEqual(deposit.method, "mercadopago")
+        self.assertEqual(deposit.external_id, "payment-123")
+        self.assertEqual(CourtPayment.objects.filter(booking=booking).count(), 1)
+
+    def test_webhook_refund_offsets_the_deposit_in_cash(self):
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch, mock.patch(
+            "core.views.notify_court_booking"
+        ):
+            fetch.return_value = self.payment_payload(booking)
+            self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+            fetch.return_value = self.payment_payload(booking, status="refunded")
+            self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+        booking.refresh_from_db()
+        self.assertFalse(booking.is_paid)
+        self.assertEqual(booking.payment_status, "refunded")
+        refund = CourtPayment.objects.get(booking=booking, kind="refund")
+        self.assertEqual(refund.amount, Decimal("2400.00"))
+        self.assertEqual(refund.method, "mercadopago")
+        self.assertEqual(refund.external_id, "refund:payment-123")
+        summary = cash_service.summary_for_day(self.complex, timezone.localdate())
+        self.assertEqual(summary["total_income"], Decimal("2400.00"))
+        self.assertEqual(summary["total_outgoing"], Decimal("2400.00"))
+        self.assertEqual(summary["net_total"], Decimal("0.00"))
 
     def test_webhook_in_process_then_approved(self):
         booking = self.make_pending()
@@ -1020,6 +1064,268 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         self.complex.save(update_fields=["mp_access_token_encrypted"])
         self.complex.refresh_from_db()
         self.assertFalse(self.complex.has_mp_token)
+
+
+class CajaTurnosTests(TurnosFixtureMixin, TestCase):
+    """Libro de caja, medios de pago, devoluciones y cierre diario."""
+
+    def setUp(self):
+        self.complex = self.make_complex(booking_price=Decimal("8000"))
+        self.court = self.make_court(self.complex)
+        self.day = timezone.localdate() + timedelta(days=5)
+        self.make_schedule(self.complex, day_type=schedule_service.day_type_for(self.day))
+        self.admin = User.objects.create_superuser("admin-caja", password="clave-segura-123")
+        self.booking = self.make_booking(
+            self.complex,
+            self.court,
+            self.day,
+            time(9, 0),
+            customer_name="Ana Caja",
+            price=Decimal("8000"),
+            deposit_amount=Decimal("2400"),
+        )
+
+    def record(self, kind="deposit", method="cash", amount="2400.00", booking=None):
+        return cash_service.record_payment(
+            booking or self.booking,
+            kind=kind,
+            method=method,
+            amount=Decimal(amount),
+            user=self.admin,
+            paid_at=timezone.now(),
+            note="Movimiento de prueba",
+        )
+
+    def test_caja_requires_login(self):
+        response = self.client.get(reverse("panel_turnos_caja"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("account_login"), response.url)
+
+    def test_caja_shows_totals_and_does_not_mix_complexes(self):
+        self.record(kind="deposit", method="cash", amount="2400.00")
+        self.record(kind="balance", method="transfer", amount="5600.00")
+        cash_service.record_manual_refund(
+            self.booking, Decimal("1000.00"), "cash", self.admin, note="Lluvia"
+        )
+        other_complex = self.make_complex(slug="otro-caja", name="Otro Complejo")
+        other_court = self.make_court(other_complex, name="Cancha Otra")
+        other_booking = self.make_booking(
+            other_complex,
+            other_court,
+            self.day,
+            time(10, 30),
+            customer_name="No Debe Aparecer",
+            price=Decimal("9999"),
+            deposit_amount=Decimal("3000"),
+        )
+        cash_service.record_payment(
+            other_booking,
+            kind="deposit",
+            method="cash",
+            amount=Decimal("9999"),
+            user=self.admin,
+        )
+
+        self.client.force_login(self.admin)
+        response = self.client.get(
+            reverse("panel_turnos_caja"),
+            {
+                "complejo": self.complex.slug,
+                "desde": timezone.localdate().isoformat(),
+                "hasta": timezone.localdate().isoformat(),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Caja y contabilidad")
+        self.assertContains(response, "$8000")
+        self.assertContains(response, "$1000")
+        self.assertContains(response, "$7000")
+        self.assertContains(response, "Efectivo")
+        self.assertContains(response, "Transferencia")
+        self.assertContains(response, "Ana Caja")
+        self.assertNotContains(response, "No Debe Aparecer")
+        self.assertNotContains(response, "$9999")
+
+    def test_export_csv_contains_movements_and_totals(self):
+        self.record(kind="deposit", method="cash", amount="2400.00")
+        self.client.force_login(self.admin)
+        response = self.client.get(
+            reverse("panel_turnos_caja_export"),
+            {
+                "complejo": self.complex.slug,
+                "desde": timezone.localdate().isoformat(),
+                "hasta": timezone.localdate().isoformat(),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/csv", response["Content-Type"])
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("Fecha de caja;Tipo;Medio", content)
+        self.assertIn(self.booking.code, content)
+        self.assertIn("Seña", content)
+        self.assertIn("2400.00", content)
+
+    def test_manual_payment_records_method_and_reversal_keeps_history(self):
+        self.client.force_login(self.admin)
+        base = {
+            "complejo": self.complex.slug,
+            "fecha": self.day.isoformat(),
+            "accion": "marcar_pagado",
+            "turno_id": self.booking.pk,
+        }
+        self.client.post(reverse("panel_turno_accion"), {**base, "metodo": "transfer"})
+        self.booking.refresh_from_db()
+        self.assertTrue(self.booking.is_paid)
+        deposit = CourtPayment.objects.get(booking=self.booking, kind="deposit")
+        self.assertEqual(deposit.amount, Decimal("2400.00"))
+        self.assertEqual(deposit.method, "transfer")
+        self.assertEqual(deposit.collected_by, self.admin)
+
+        self.client.post(reverse("panel_turno_accion"), {**base, "metodo": "card"})
+        self.booking.refresh_from_db()
+        self.assertTrue(self.booking.balance_paid)
+        balance = CourtPayment.objects.get(booking=self.booking, kind="balance")
+        self.assertEqual(balance.amount, Decimal("5600.00"))
+        self.assertEqual(balance.method, "card")
+
+        self.client.post(
+            reverse("panel_turno_accion"),
+            {**base, "accion": "marcar_pendiente"},
+        )
+        self.booking.refresh_from_db()
+        self.assertFalse(self.booking.balance_paid)
+        reversal = CourtPayment.objects.get(booking=self.booking, kind="reversal")
+        self.assertEqual(reversal.amount, Decimal("5600.00"))
+        self.assertEqual(reversal.reverses, balance)
+        self.assertEqual(CourtPayment.objects.filter(booking=self.booking).count(), 3)
+
+    def test_unmarking_a_deposit_adds_a_reversal_without_deleting_the_income(self):
+        deposit = self.record(kind="deposit", method="transfer", amount="2400.00")
+        self.booking.is_paid = True
+        self.booking.paid_at = timezone.now()
+        self.booking.payment_status = "manual"
+        self.booking.save(update_fields=["is_paid", "paid_at", "payment_status"])
+        self.client.force_login(self.admin)
+        self.client.post(
+            reverse("panel_turno_accion"),
+            {
+                "complejo": self.complex.slug,
+                "fecha": self.day.isoformat(),
+                "accion": "marcar_pendiente",
+                "turno_id": self.booking.pk,
+            },
+        )
+        self.booking.refresh_from_db()
+        self.assertFalse(self.booking.is_paid)
+        reversal = CourtPayment.objects.get(booking=self.booking, kind="reversal")
+        self.assertEqual(reversal.amount, Decimal("2400.00"))
+        self.assertEqual(reversal.method, "transfer")
+        self.assertEqual(reversal.reverses, deposit)
+        self.assertEqual(cash_service.refundable_amount(self.booking), Decimal("0.00"))
+
+    def test_full_manual_booking_records_a_full_payment(self):
+        full_booking = self.make_booking(
+            self.complex,
+            self.court,
+            self.day,
+            time(10, 30),
+            customer_name="Turno manual",
+            price=Decimal("8000"),
+            deposit_amount=Decimal("0"),
+        )
+        self.client.force_login(self.admin)
+        self.client.post(
+            reverse("panel_turno_accion"),
+            {
+                "complejo": self.complex.slug,
+                "fecha": self.day.isoformat(),
+                "accion": "marcar_pagado",
+                "turno_id": full_booking.pk,
+                "metodo": "cash",
+            },
+        )
+        payment = CourtPayment.objects.get(booking=full_booking)
+        self.assertEqual(payment.kind, "full")
+        self.assertEqual(payment.amount, Decimal("8000.00"))
+        self.assertEqual(payment.method, "cash")
+
+    def test_manual_refund_validates_and_records_the_movement(self):
+        self.record(kind="deposit", method="cash", amount="2400.00")
+        self.client.force_login(self.admin)
+        url = reverse("panel_turnos_caja_devolucion")
+        response = self.client.post(
+            url,
+            {
+                "complejo": self.complex.slug,
+                "codigo": self.booking.code,
+                "monto": "1000,50",
+                "metodo": "cash",
+                "nota": "Acuerdo con el cliente",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        refund = CourtPayment.objects.get(booking=self.booking, kind="refund")
+        self.assertEqual(refund.amount, Decimal("1000.50"))
+        self.assertEqual(refund.method, "cash")
+        self.assertEqual(refund.collected_by, self.admin)
+        self.assertEqual(cash_service.refundable_amount(self.booking), Decimal("1399.50"))
+
+        response = self.client.post(
+            url,
+            {
+                "complejo": self.complex.slug,
+                "codigo": self.booking.code,
+                "monto": "2000",
+                "metodo": "cash",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(CourtPayment.objects.filter(booking=self.booking, kind="refund").count(), 1)
+
+    def test_staff_of_another_complex_cannot_close_or_refund(self):
+        other_complex = self.make_complex(slug="ajeno-caja", name="Complejo Ajeno")
+        staff = User.objects.create_user("staff-caja", password="clave-segura-123")
+        staff.complexes.add(other_complex)
+        self.record(kind="deposit", method="cash", amount="2400.00")
+        self.client.force_login(staff)
+        response = self.client.post(
+            reverse("panel_turnos_caja_cerrar"),
+            {"complejo": self.complex.slug, "fecha": timezone.localdate().isoformat()},
+        )
+        self.assertEqual(response.status_code, 403)
+        response = self.client.post(
+            reverse("panel_turnos_caja_devolucion"),
+            {
+                "complejo": self.complex.slug,
+                "codigo": self.booking.code,
+                "monto": "100",
+                "metodo": "cash",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(CashClose.objects.count(), 0)
+
+    def test_cash_close_snapshots_totals_and_cannot_repeat(self):
+        self.record(kind="deposit", method="cash", amount="2400.00")
+        self.client.force_login(self.admin)
+        url = reverse("panel_turnos_caja_cerrar")
+        today = timezone.localdate().isoformat()
+        self.client.post(
+            url,
+            {"complejo": self.complex.slug, "fecha": today, "nota": "Cierre de prueba"},
+        )
+        close = CashClose.objects.get(complex=self.complex, date=timezone.localdate())
+        self.assertEqual(close.total_income, Decimal("2400.00"))
+        self.assertEqual(close.total_outgoing, Decimal("0.00"))
+        self.assertEqual(close.net_total, Decimal("2400.00"))
+        self.assertEqual(close.closed_by, self.admin)
+        self.assertIn("cash", close.payment_breakdown)
+
+        self.client.post(
+            url,
+            {"complejo": self.complex.slug, "fecha": today, "nota": "Repetido"},
+        )
+        self.assertEqual(CashClose.objects.filter(complex=self.complex).count(), 1)
 
 
 class PublicCalendarViewTests(TurnosFixtureMixin, TestCase):

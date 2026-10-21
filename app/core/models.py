@@ -568,6 +568,164 @@ class CourtBooking(models.Model):
         return "".join(secrets.choice(alphabet) for _ in range(8))
 
 
+class CourtPayment(models.Model):
+    """Movimiento de caja de un turno.
+
+    Es un libro append-only: los cobros se registran con importe positivo y las
+    devoluciones, contracargos o reversiones se registran como movimientos de
+    egreso. Nunca se edita un movimiento anterior para corregirlo; se agrega
+    otro movimiento que lo revierte o devuelve. Así queda la trazabilidad de
+    quién cobró, cuándo y con qué medio.
+    """
+
+    KIND = [
+        ("deposit", "Seña"),
+        ("balance", "Saldo en el club"),
+        ("full", "Pago total"),
+        ("refund", "Devolución"),
+        ("chargeback", "Contracargo"),
+        ("reversal", "Reversión"),
+    ]
+    METHOD = [
+        ("cash", "Efectivo"),
+        ("transfer", "Transferencia"),
+        ("card", "Tarjeta"),
+        ("mercadopago", "Mercado Pago"),
+        ("other", "Otro"),
+    ]
+    OUTGOING_KINDS = {"refund", "chargeback", "reversal"}
+
+    complex = models.ForeignKey(
+        Complex,
+        on_delete=models.CASCADE,
+        related_name="court_payments",
+        verbose_name="Complejo",
+    )
+    booking = models.ForeignKey(
+        CourtBooking,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="court_payments",
+        verbose_name="Turno",
+    )
+    kind = models.CharField("Tipo de movimiento", max_length=12, choices=KIND)
+    method = models.CharField("Medio de pago", max_length=16, choices=METHOD)
+    amount = models.DecimalField("Importe", max_digits=10, decimal_places=2)
+    paid_at = models.DateTimeField("Fecha del movimiento", default=timezone.now, db_index=True)
+    collected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="collected_court_payments",
+        verbose_name="Registrado por",
+    )
+    collected_by_name = models.CharField("Nombre de quien registró", max_length=150, blank=True)
+    note = models.CharField("Nota", max_length=200, blank=True)
+    external_id = models.CharField("ID externo", max_length=100, blank=True, db_index=True)
+    reverses = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reversed_by",
+        verbose_name="Revierte el movimiento",
+    )
+    created_at = models.DateTimeField("Creado", auto_now_add=True)
+
+    # Copias de los datos del turno: la caja debe poder leerse aunque el turno
+    # o la cancha se eliminen o se renombren en el futuro.
+    booking_code = models.CharField("Código del turno", max_length=12, blank=True)
+    customer_name = models.CharField("Cliente del turno", max_length=80, blank=True)
+    court_name = models.CharField("Cancha del turno", max_length=80, blank=True)
+    booking_date = models.DateField("Fecha del turno", null=True, blank=True)
+    booking_start = models.TimeField("Hora del turno", null=True, blank=True)
+
+    class Meta:
+        ordering = ["-paid_at", "-id"]
+        verbose_name = "Movimiento de caja"
+        verbose_name_plural = "Movimientos de caja"
+        indexes = [
+            models.Index(fields=["complex", "paid_at"], name="court_pay_complex_date_idx"),
+            models.Index(fields=["booking", "kind"], name="court_pay_booking_kind_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(amount__gt=0),
+                name="court_payment_positive_amount",
+            ),
+            models.UniqueConstraint(
+                fields=["external_id"],
+                condition=~Q(external_id=""),
+                name="unique_court_payment_external_id",
+            ),
+            models.UniqueConstraint(
+                fields=["reverses"],
+                condition=Q(reverses__isnull=False),
+                name="unique_court_payment_reversal",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} ${self.amount} · {self.booking_code or self.complex}"
+
+    @property
+    def is_outgoing(self) -> bool:
+        return self.kind in self.OUTGOING_KINDS
+
+    @property
+    def signed_amount(self) -> Decimal:
+        """Importe con signo, útil para sumar el neto de la caja."""
+        return -self.amount if self.is_outgoing else self.amount
+
+
+class CashClose(models.Model):
+    """Foto de los totales de caja de un día.
+
+    El cierre no bloquea el día: si más tarde se registra un movimiento con
+    fecha anterior, el reporte actual sigue mostrando el total real y el cierre
+    queda como constancia de lo que se informó en su momento.
+    """
+
+    complex = models.ForeignKey(
+        Complex,
+        on_delete=models.CASCADE,
+        related_name="cash_closes",
+        verbose_name="Complejo",
+    )
+    date = models.DateField("Fecha de caja")
+    closed_at = models.DateTimeField("Cerrado el", auto_now_add=True)
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="court_cash_closes",
+        verbose_name="Cerrado por",
+    )
+    closed_by_name = models.CharField("Nombre de quien cerró", max_length=150, blank=True)
+    total_income = models.DecimalField("Total cobrado", max_digits=12, decimal_places=2, default=0)
+    total_outgoing = models.DecimalField("Total egresos", max_digits=12, decimal_places=2, default=0)
+    net_total = models.DecimalField("Neto", max_digits=12, decimal_places=2, default=0)
+    payment_breakdown = models.JSONField("Detalle por medio de pago", default=dict, blank=True)
+    note = models.CharField("Nota", max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["-date", "-closed_at"]
+        verbose_name = "Cierre de caja"
+        verbose_name_plural = "Cierres de caja"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["complex", "date"],
+                name="unique_cash_close_complex_date",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.complex.name} · {self.date:%d/%m/%Y}"
+
+
 class Player(models.Model):
     GENDER = [("M", "Masculino"), ("F", "Femenino")]
     LEVEL = [
