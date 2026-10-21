@@ -15,7 +15,8 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
   cargado, la reserva pública retiene el horario unos minutos y cobra una **seña del 30%** con
   **Checkout Pro**; el turno se confirma solo cuando Mercado Pago aprueba el pago y el **saldo se
   paga en el club**. Sin token se mantiene el cobro manual. El panel registra la seña y el saldo
-  por separado, permite marcar ambos como cobrados y lleva los totales del día. Cada reserva puede avisarse por **WhatsApp**:
+  por separado, permite marcar ambos como cobrados, elegir el medio de pago y lleva la **caja**
+  con movimientos, devoluciones, cierres diarios y exportación CSV. Cada reserva puede avisarse por **WhatsApp**:
   el cliente al complejo desde la confirmación y el panel al cliente con el botón «Avisar»
   (wa.me), y con CallMeBot configurado el complejo recibe el aviso automático. En el panel,
   **Turnos** muestra la agenda del día, permite cargar reservas manuales, bloquear horarios
@@ -230,8 +231,10 @@ saldo restante se paga en el club. Cada complejo usa **su propia cuenta de Merca
    - confirma el turno cuando el pago aparece **aprobado**, consultando el pago contra la API
      (webhook y vuelta del checkout, sin confiar en los parámetros de la URL);
    - libera el horario automáticamente si la seña no se acredita antes del vencimiento.
-4. El panel muestra la seña y el saldo por separado. «Cobrar saldo» registra el pago en el club;
-   «Marcar pendiente» lo revierte. Los totales del día suman seña + saldo cobrado.
+4. El panel muestra la seña y el saldo por separado. Al marcar un cobro manual se elige el medio
+   de pago (efectivo, transferencia, tarjeta u otro); «Cobrar saldo» registra el saldo en el club
+   y «Marcar pendiente» agrega una reversión sin borrar el movimiento original. Los totales del
+   día suman seña + saldo cobrado, y la caja muestra el neto con devoluciones.
 5. Sin token cargado se mantiene el flujo manual: el turno se reserva y el cliente ve el
    alias/CVU o el link de Mercado Pago para coordinar el pago.
 
@@ -243,6 +246,30 @@ complejo y se valida la referencia y el monto de la seña. Los medios de pago en
 
 Variables opcionales en `.env`: `BOOKING_DEPOSIT_PERCENT=30`, `BOOKING_HOLD_MINUTES=15` y
 `MERCADO_PAGO_TIMEOUT=15`.
+
+## Caja y contabilidad de turnos
+
+**Turnos → Caja y contabilidad** mantiene un libro de movimientos separado del estado operativo
+del turno. Cada seña, saldo, pago total, devolución, contracargo o reversión queda registrado con
+fecha, medio de pago, importe y usuario que lo registró. Los movimientos no se editan: una
+corrección agrega una reversión vinculada al movimiento original.
+
+- **Medios de pago:** efectivo, transferencia, tarjeta, Mercado Pago u otro. Los cobros online se
+  registran automáticamente como Mercado Pago; en los cobros manuales el medio se elige en la
+  agenda.
+- **Cierres diarios:** guardan una foto de los totales y del usuario que cerró. El cierre no
+  bloquea el día; si después aparece un movimiento con esa fecha, el reporte actual muestra el
+  total real y el cierre queda como constancia.
+- **Devoluciones manuales:** se registran por código de turno, monto, medio y nota. El sistema
+  valida que no se devuelva más de lo cobrado. No cancela el turno ni reintegra dinero
+  automáticamente: el reintegro real se hace en Mercado Pago o en el club.
+- **Webhook de Mercado Pago:** un pago reembolsado o un contracargo genera el egreso
+  correspondiente. Los webhooks repetidos no duplican movimientos por el ID externo.
+- **Reportes:** filtros por complejo, rango de fechas y medio de pago; totales de cobrado,
+  egresos, neto y saldo pendiente en club; exportación CSV compatible con planillas.
+- **Historial previo:** la migración `0019_backfill_court_payments` crea movimientos para los
+  turnos que ya estaban marcados como pagados, con medio «Otro» y la nota de migración, para no
+  perder los totales anteriores.
 
 ## Email saliente (opcional)
 

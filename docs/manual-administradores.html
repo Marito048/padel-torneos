@@ -464,7 +464,7 @@
       <a href="#ingreso"><span>02</span> Ingreso y roles</a>
       <a href="#configuracion"><span>03</span> Configuración inicial del complejo</a>
       <a href="#agenda"><span>04</span> Agenda de turnos</a>
-      <a href="#cobros"><span>05</span> Seña, saldo y cobros</a>
+      <a href="#cobros"><span>05</span> Seña, saldo y caja</a>
       <a href="#mercado-pago"><span>06</span> Mercado Pago: prueba y producción</a>
       <a href="#torneos"><span>07</span> Torneos: creación y estados</a>
       <a href="#parejas"><span>08</span> Parejas y jugadores</a>
@@ -643,13 +643,14 @@
         <tr><td>Saldo en cancha</td><td>Lo que todavía falta cobrar en el club por los turnos del día.</td></tr>
       </tbody>
     </table>
+    <p>Estos totales son operativos y se calculan con el estado de cada turno. Para ver el detalle por medio de pago, las devoluciones y el neto real, usá <span class="ui">Caja y contabilidad</span>.</p>
     <p>El botón <span class="ui">Avisar</span> abre WhatsApp con el mensaje de confirmación ya escrito para el cliente. Aparece en reservas confirmadas con teléfono cargado.</p>
   </section>
 
   <section class="chapter" id="cobros">
     <span class="chapter-kicker">05 · Dinero</span>
-    <h2>Seña, saldo y cobros</h2>
-    <p class="lead">El sistema separa lo que se cobra al reservar de lo que se cobra en el club. Así podés saber cuánto entró y cuánto falta, sin confundir una seña con el total del turno.</p>
+    <h2>Seña, saldo y caja</h2>
+    <p class="lead">El sistema separa lo que se cobra al reservar de lo que se cobra en el club. Así podés saber cuánto entró, cuánto falta y quién registró cada movimiento, sin confundir una seña con el total del turno.</p>
 
     <div class="grid-2">
       <div class="card">
@@ -691,11 +692,45 @@
       <strong>No marques pagos sin verificarlos.</strong> Los totales del día y el saldo pendiente se calculan con lo que registres. Si cobraste en efectivo, anotá la nota del turno o marcá el pago en el momento.
     </div>
 
+    <h3>Caja y contabilidad</h3>
+    <p>En <span class="ui">Turnos</span> → <span class="ui">Caja y contabilidad</span> está el libro de todos los movimientos de dinero del complejo. No reemplaza la agenda: la agenda muestra el estado del turno y la caja muestra cómo se movió el dinero.</p>
+    <ul>
+      <li><strong>Medio de pago:</strong> al marcar una seña, un saldo o un turno manual, elegí <span class="ui">Efectivo</span>, <span class="ui">Transferencia</span>, <span class="ui">Tarjeta</span> u <span class="ui">Otro</span>. Los pagos aprobados por Mercado Pago se registran solos como <span class="ui">Mercado Pago</span>.</li>
+      <li><strong>Quién cobró:</strong> el sistema guarda el usuario del panel que marcó el cobro. En los pagos online figura <span class="ui">Mercado Pago</span> porque los confirma la plataforma.</li>
+      <li><strong>Historial:</strong> los movimientos no se editan ni se borran. Si marcaste un pago por error y usás <span class="ui">Marcar pendiente</span>, se agrega una <strong>reversión</strong> y el cobro original queda visible. Eso permite auditar qué pasó.</li>
+      <li><strong>Totales:</strong> la pantalla muestra lo cobrado, las devoluciones y reversiones, el neto en caja y el saldo que falta cobrar en el club para los turnos del período.</li>
+    </ul>
+
+    <h4>Consultar y exportar</h4>
+    <ol class="steps">
+      <li>Elegí el complejo y el rango de fechas. Por defecto se muestra desde el primer día del mes hasta hoy.</li>
+      <li>Podés filtrar por medio de pago para ver, por ejemplo, sólo efectivo o sólo Mercado Pago.</li>
+      <li>Revisá la tabla <strong>Movimientos</strong>: fecha, turno, cliente, tipo, medio, monto, usuario y nota.</li>
+      <li>Usá <span class="ui">Exportar CSV</span> para abrir el detalle en una planilla de cálculo. El archivo incluye los totales al final.</li>
+    </ol>
+
+    <h4>Registrar una devolución</h4>
+    <ol class="steps">
+      <li>Hacé el reintegro real: en Mercado Pago si el pago fue online, o entregando el dinero si fue en efectivo o transferencia.</li>
+      <li>En <span class="ui">Caja y contabilidad</span>, buscá el bloque <strong>Registrar devolución</strong>.</li>
+      <li>Ingresá el código del turno, el monto devuelto, el medio y una nota con el motivo. El sistema no te deja devolver más de lo que efectivamente cobraste.</li>
+      <li>Revisá en <strong>Movimientos</strong> que aparezca como <strong>Devolución</strong>. El neto de caja baja automáticamente.</li>
+    </ol>
+    <div class="callout callout--warning">
+      <strong>Una devolución registrada no cancela el turno.</strong> Son dos acciones distintas: cancelá el turno en la agenda si corresponde y registrá la devolución en Caja para que el dinero quede auditado. Mercado Pago no reintegra automáticamente desde el panel: el reintegro online se hace en Mercado Pago.
+    </div>
+
+    <h4>Cerrar la caja del día</h4>
+    <p>Al terminar la jornada, en <strong>Cerrar caja de un día</strong> elegí la fecha y guardá. El cierre guarda una foto de los totales y el usuario que lo hizo. No bloquea el día: si después se registra un movimiento con esa fecha, el reporte actual muestra el total real y el cierre queda como constancia de lo informado en su momento.</p>
+    <div class="callout callout--info">
+      <strong>Recomendación:</strong> cerrá la caja al final de la jornada, después de registrar todos los cobros y devoluciones. Si necesitás corregir algo, agregá el movimiento correctivo en vez de intentar borrar el anterior.
+    </div>
+
     <h3>Devoluciones y cancelaciones</h3>
-    <p>Si cancelás un turno con seña o saldo cobrado, el sistema conserva el registro y muestra una advertencia. La devolución se gestiona aparte: en Mercado Pago si fue online, o en el club si fue efectivo. No hay un botón de reintegro automático.</p>
+    <p>Si cancelás un turno con seña o saldo cobrado, el sistema conserva el registro y muestra una advertencia. La devolución se gestiona aparte: en Mercado Pago si fue online, o en el club si fue efectivo. Después registrala en <span class="ui">Caja y contabilidad</span> para que los totales queden bien. No hay un botón de reintegro automático.</p>
 
     <h3>Pagos que llegan tarde</h3>
-    <p>Si un pago se aprueba después de que venció la retención, el horario puede haberse liberado. Si todavía está libre, el sistema puede restaurar el turno; si ya lo tomó otra persona o la reserva se canceló, el pago queda <strong>aprobado sin turno</strong>. En ese caso, revisá la agenda, coordiná con el cliente y gestioná la devolución o un nuevo horario.</p>
+    <p>Si un pago se aprueba después de que venció la retención, el horario puede haberse liberado. Si todavía está libre, el sistema puede restaurar el turno; si ya lo tomó otra persona o la reserva se canceló, el pago queda <strong>aprobado sin turno</strong>. En ese caso, revisá la agenda, coordiná con el cliente y gestioná la devolución o un nuevo horario. El pago igual queda registrado en Caja.</p>
   </section>
 
   <section class="chapter" id="mercado-pago">
@@ -1018,7 +1053,9 @@
     <ol>
       <li>Verificá el pago en Mercado Pago o en el comprobante del cliente.</li>
       <li>En la agenda, usá <span class="ui">Confirmar seña</span> o <span class="ui">Marcar seña abonada</span>.</li>
-      <li>Cuando el cliente pague el resto en el club, usá <span class="ui">Cobrar saldo</span>.</li>
+      <li>Elegí el medio de pago cuando corresponda: efectivo, transferencia, tarjeta u otro.</li>
+      <li>Cuando el cliente pague el resto en el club, usá <span class="ui">Cobrar saldo</span> y elegí el medio.</li>
+      <li>Al terminar el día, revisá <span class="ui">Caja y contabilidad</span> y cerrá la caja.</li>
     </ol>
 
     <h3>Cambiar el precio de los turnos</h3>
@@ -1028,7 +1065,7 @@
     <p>Creá un usuario, asignale el complejo y dejá activo <strong>Acceso al panel</strong>. No le des el usuario de otra persona. Cuando deje el club, suspendelo.</p>
 
     <h3>Cancelar un turno con pago</h3>
-    <p>Cancelá desde la agenda y coordiná la devolución. Si el pago fue online, gestioná el reintegro en Mercado Pago. Si fue en efectivo, registrá el acuerdo en la nota del turno.</p>
+    <p>Cancelá desde la agenda y coordiná la devolución. Si el pago fue online, gestioná el reintegro en Mercado Pago; si fue en efectivo, entregá el dinero. Después registrá la devolución en <span class="ui">Caja y contabilidad</span> para que quede auditada y el neto sea correcto.</p>
 
     <h3>Corregir un resultado</h3>
     <p>Entrá a <strong>Resultados</strong> → <strong>Últimos resultados</strong> → <strong>Corregir resultado</strong>. Si el sistema lo bloquea, revisá los partidos dependientes de la llave y corregilos en orden.</p>
@@ -1170,6 +1207,10 @@
         <tr><td>Turno</td><td>Franja horaria reservada por un cliente o bloqueada por el complejo.</td></tr>
         <tr><td>Seña</td><td>Pago parcial al reservar. Por defecto, 30% del precio.</td></tr>
         <tr><td>Saldo</td><td>Parte del precio que se paga en el club.</td></tr>
+        <tr><td>Caja</td><td>Libro de movimientos de dinero: cobros, devoluciones, medios de pago y cierres.</td></tr>
+        <tr><td>Movimiento</td><td>Cada ingreso o egreso registrado en Caja. Se vincula al turno y al usuario que lo registró.</td></tr>
+        <tr><td>Reversión</td><td>Movimiento que corrige un cobro marcado por error. No borra el cobro original.</td></tr>
+        <tr><td>Cierre de caja</td><td>Foto de los totales de un día guardada por el usuario. No bloquea movimientos posteriores.</td></tr>
         <tr><td>Retención</td><td>Tiempo en que el horario queda guardado mientras el cliente paga. Por defecto, 15 minutos.</td></tr>
         <tr><td>Access token</td><td>Clave privada de Mercado Pago que permite cobrar. No es un link de pago.</td></tr>
         <tr><td>Vendedor</td><td>Cuenta de Mercado Pago que recibe el dinero. Su token va en el panel.</td></tr>
