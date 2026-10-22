@@ -15,7 +15,7 @@ import unicodedata
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Max, Q
 
 from core.models import (
     Match,
@@ -470,9 +470,10 @@ def assign_team_to_zone(zone: Zone, team: Team) -> ZoneTeam:
 
 def remove_team_from_zone(zone: Zone, team: Team) -> None:
     with transaction.atomic():
-        if bracket_has_real_data(zone.tournament):
+        tournament = Tournament.objects.select_for_update().get(pk=zone.tournament_id)
+        if bracket_has_real_data(tournament):
             raise ValidationError("La llave ya tiene resultados: no se puede modificar la composición de las zonas.")
-        related = Match.objects.filter(tournament=zone.tournament, zone=zone).filter(
+        related = Match.objects.filter(tournament=tournament, zone=zone).filter(
             Q(team1=team) | Q(team2=team)
         )
         if any(m.has_real_data for m in related):
@@ -481,38 +482,45 @@ def remove_team_from_zone(zone: Zone, team: Team) -> None:
         ZoneTeam.objects.filter(zone=zone, team=team).delete()
         from core.services.progression import refresh_tournament_structure
 
-        refresh_tournament_structure(zone.tournament_id)
+        refresh_tournament_structure(tournament.pk)
 
 
 def ensure_zone_matches(zone: Zone) -> list[Match]:
     """Genera el round robin pendiente de una zona (idempotente)."""
-    teams = list(zone.teams.order_by("pk"))
-    existing = {
-        tuple(sorted((m.team1_id, m.team2_id)))
-        for m in Match.objects.filter(tournament=zone.tournament, stage="group", zone=zone)
-        if m.team1_id and m.team2_id
-    }
-    created = []
-    slot = Match.objects.filter(tournament=zone.tournament, stage="group", zone=zone).count()
-    for i, team_a in enumerate(teams):
-        for team_b in teams[i + 1:]:
-            key = tuple(sorted((team_a.pk, team_b.pk)))
-            if key in existing:
-                continue
-            slot += 1
-            match = Match(
-                tournament=zone.tournament,
-                stage="group",
-                zone=zone,
-                round_number=1,
-                slot=slot,
-                team1=team_a if team_a.pk < team_b.pk else team_b,
-                team2=team_b if team_a.pk < team_b.pk else team_a,
-            )
-            match.save()
-            existing.add(key)
-            created.append(match)
-    return created
+    with transaction.atomic():
+        tournament = Tournament.objects.select_for_update().get(pk=zone.tournament_id)
+        teams = list(zone.teams.order_by("pk"))
+        existing = {
+            tuple(sorted((m.team1_id, m.team2_id)))
+            for m in Match.objects.filter(tournament=tournament, stage="group", zone=zone)
+            if m.team1_id and m.team2_id
+        }
+        created = []
+        slot = (
+            Match.objects.filter(tournament=tournament, stage="group", zone=zone)
+            .aggregate(max_slot=Max("slot"))
+            .get("max_slot")
+            or 0
+        )
+        for i, team_a in enumerate(teams):
+            for team_b in teams[i + 1:]:
+                key = tuple(sorted((team_a.pk, team_b.pk)))
+                if key in existing:
+                    continue
+                slot += 1
+                match = Match(
+                    tournament=tournament,
+                    stage="group",
+                    zone=zone,
+                    round_number=1,
+                    slot=slot,
+                    team1=team_a if team_a.pk < team_b.pk else team_b,
+                    team2=team_b if team_a.pk < team_b.pk else team_a,
+                )
+                match.save()
+                existing.add(key)
+                created.append(match)
+        return created
 
 
 def _zone_draw_signature(team_ids: list[int]) -> str:

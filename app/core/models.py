@@ -118,6 +118,11 @@ class Complex(models.Model):
     mp_access_token_encrypted = models.TextField(
         "Token de Mercado Pago (cifrado)", blank=True, editable=False
     )
+    # Secreto de la firma de webhooks de la aplicación de Mercado Pago. Es
+    # independiente del access token y se configura en «Tus integraciones».
+    mp_webhook_secret_encrypted = models.TextField(
+        "Secreto de webhook de Mercado Pago (cifrado)", blank=True, editable=False
+    )
     whatsapp_phone = models.CharField(
         "WhatsApp del complejo", max_length=40, blank=True,
         help_text="Con código de país (ej. 5492215551234). Recibe el aviso de cada reserva.",
@@ -142,6 +147,25 @@ class Complex(models.Model):
         return self.mp_access_token.startswith(("APP_USR-", "TEST-"))
 
     @property
+    def online_payments_enabled(self) -> bool:
+        """El complejo puede cobrar online con las garantías configuradas.
+
+        El interruptor global manda: en la primera versión del piloto está
+        apagado y ningún token guardado habilita el checkout. Con la exigencia
+        de firma activa (por defecto y siempre en producción), un token sin
+        secreto de webhook tampoco lo habilita: de lo contrario el pago podría
+        acreditarse por la vuelta del navegador pero perderse si el cliente
+        cierra la ventana.
+        """
+        if not getattr(settings, "MERCADO_PAGO_ONLINE_PAYMENTS_ENABLED", False):
+            return False
+        if not self.has_mp_token:
+            return False
+        if getattr(settings, "MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET", True):
+            return self.has_mp_webhook_secret
+        return True
+
+    @property
     def mp_access_token(self) -> str:
         if not self.mp_access_token_encrypted:
             return ""
@@ -158,6 +182,35 @@ class Complex(models.Model):
             self.mp_access_token_encrypted = ""
             return
         self.mp_access_token_encrypted = _token_cipher().encrypt(token.encode("utf-8")).decode("utf-8")
+
+    @property
+    def has_mp_webhook_secret(self) -> bool:
+        return bool(self.mp_webhook_secret)
+
+    @property
+    def mp_webhook_secret(self) -> str:
+        if not self.mp_webhook_secret_encrypted:
+            return ""
+        try:
+            return _token_cipher().decrypt(
+                self.mp_webhook_secret_encrypted.encode("utf-8")
+            ).decode("utf-8")
+        except (InvalidToken, ValueError, TypeError):
+            logger.warning(
+                "No se pudo descifrar el secreto de webhook de Mercado Pago del complejo %s",
+                self.pk,
+            )
+            return ""
+
+    @mp_webhook_secret.setter
+    def mp_webhook_secret(self, value: str | None) -> None:
+        secret = (value or "").strip()
+        if not secret:
+            self.mp_webhook_secret_encrypted = ""
+            return
+        self.mp_webhook_secret_encrypted = _token_cipher().encrypt(
+            secret.encode("utf-8")
+        ).decode("utf-8")
 
 
 class Invitation(models.Model):
@@ -519,9 +572,42 @@ class CourtBooking(models.Model):
             self.code = self.generate_code()
         super().save(*args, **kwargs)
 
-    @property
-    def paid_amount(self) -> Decimal:
-        """Total cobrado: seña, saldo en el club o el total de un turno manual/viejo."""
+    def refresh_from_db(self, *args, **kwargs):
+        self.__dict__.pop("_ledger_summary_cache", None)
+        return super().refresh_from_db(*args, **kwargs)
+
+    def _ledger_summary(self) -> dict | None:
+        """Neto del libro de caja, o ``None`` si el turno no tiene movimientos.
+
+        Se cachea por instancia porque las plantillas consultan varias
+        propiedades seguidas. ``sync_booking_payment_state`` invalida la caché
+        cuando registra un movimiento.
+        """
+        if "_ledger_summary_cache" in self.__dict__:
+            return self.__dict__["_ledger_summary_cache"]
+        payments = list(self.court_payments.all()) if self.pk else []
+        if not payments:
+            self.__dict__["_ledger_summary_cache"] = None
+            return None
+        income = sum(
+            (payment.amount for payment in payments if not payment.is_outgoing),
+            Decimal("0.00"),
+        )
+        outgoing = sum(
+            (payment.amount for payment in payments if payment.is_outgoing),
+            Decimal("0.00"),
+        )
+        summary = {
+            "payments": payments,
+            "income": income,
+            "outgoing": outgoing,
+            "net": income - outgoing,
+        }
+        self.__dict__["_ledger_summary_cache"] = summary
+        return summary
+
+    def _legacy_paid_amount(self) -> Decimal:
+        """Cálculo anterior al libro de caja, para turnos sin movimientos."""
         price = self.price or Decimal("0")
         if not self.deposit_amount:
             return price if self.is_paid else Decimal("0")
@@ -531,15 +617,79 @@ class CourtBooking(models.Model):
         return min(paid, price)
 
     @property
-    def balance_amount(self) -> Decimal:
-        """Saldo que falta pagar en el club (0 si ya se cobró o no hay saldo)."""
+    def net_paid_amount(self) -> Decimal:
+        """Dinero neto del libro (ingresos menos devoluciones). Puede ser negativo."""
+        summary = self._ledger_summary()
+        if summary is not None:
+            return summary["net"]
+        return self._legacy_paid_amount()
+
+    @property
+    def refunded_amount(self) -> Decimal:
+        """Total devuelto o revertido según el libro."""
+        summary = self._ledger_summary()
+        return summary["outgoing"] if summary is not None else Decimal("0.00")
+
+    @property
+    def overpaid_amount(self) -> Decimal:
+        """Dinero cobrado por encima del precio (pago duplicado o a favor)."""
+        summary = self._ledger_summary()
+        if summary is None:
+            return Decimal("0.00")
         price = self.price or Decimal("0")
-        if price <= 0 or self.balance_paid:
-            return Decimal("0")
+        return max(summary["net"] - price, Decimal("0.00"))
+
+    @property
+    def paid_amount(self) -> Decimal:
+        """Total neto cobrado: libro de caja si existe; si no, banderas legadas."""
+        return max(self.net_paid_amount, Decimal("0.00"))
+
+    @property
+    def outstanding_amount(self) -> Decimal:
+        """Deuda total viva del turno (seña + saldo - devoluciones)."""
+        price = self.price or Decimal("0")
+        if price <= 0 or self.status in ("cancelled", "blocked"):
+            return Decimal("0.00")
+        summary = self._ledger_summary()
+        if summary is not None:
+            return min(max(price - summary["net"], Decimal("0.00")), price)
+        return max(price - self._legacy_paid_amount(), Decimal("0.00"))
+
+    @property
+    def deposit_pending_amount(self) -> Decimal:
+        """Parte de la seña que todavía falta cubrir con dinero neto."""
+        price = self.price or Decimal("0")
+        if price <= 0 or self.status in ("cancelled", "blocked"):
+            return Decimal("0.00")
+        deposit = min(max(self.deposit_amount or Decimal("0"), Decimal("0")), price)
+        if deposit <= 0:
+            return Decimal("0.00")
+        summary = self._ledger_summary()
+        if summary is not None:
+            return min(max(deposit - summary["net"], Decimal("0.00")), deposit)
+        return deposit if not self.is_paid else Decimal("0.00")
+
+    @property
+    def balance_amount(self) -> Decimal:
+        """Saldo que se cobra en el club, ya descontado el neto cobrado.
+
+        Se conserva la semántica de la agenda: la seña se cobra aparte y el club
+        cobra el resto. Si una devolución reduce el neto por debajo de la seña,
+        la diferencia aparece en ``deposit_pending_amount``.
+        """
+        price = self.price or Decimal("0")
+        if price <= 0 or self.status in ("cancelled", "blocked"):
+            return Decimal("0.00")
+        summary = self._ledger_summary()
+        if summary is not None:
+            covered = max(summary["net"], self.deposit_amount or Decimal("0"))
+            return min(max(price - covered, Decimal("0.00")), price)
         # Turnos anteriores a la seña o cargados a mano: si están abonados, se cobró todo.
+        if self.balance_paid:
+            return Decimal("0.00")
         if self.is_paid and not self.deposit_amount:
-            return Decimal("0")
-        return max(price - (self.deposit_amount or Decimal("0")), Decimal("0"))
+            return Decimal("0.00")
+        return max(price - (self.deposit_amount or Decimal("0")), Decimal("0.00"))
 
     @property
     def hold_expired(self) -> bool:
@@ -1038,6 +1188,10 @@ class TieBreakAudit(models.Model):
         return super().save(*args, **kwargs)
 
 
+class MatchConflictError(ValidationError):
+    """El partido cambió entre que se leyó y se intentó guardar."""
+
+
 class Match(models.Model):
     STAGE = [
         ("group", "Zona (round robin)"),
@@ -1088,6 +1242,7 @@ class Match(models.Model):
         verbose_name="Cargado por",
     )
     recorded_at = models.DateTimeField("Cargado el", null=True, blank=True)
+    version = models.PositiveIntegerField("Versión", default=0, editable=False)
 
     class Meta:
         ordering = ["round_number", "slot", "id"]
@@ -1323,24 +1478,55 @@ class Match(models.Model):
         self.decided_by_super = defined_by_super
 
     def save(self, *args, **kwargs):
+        """Guarda el partido con un orden de locks único: torneo → partido.
+
+        Todas las rutas de escritura (servicios, admin, generación de llaves y
+        zonas) pasan por acá o toman el mismo lock de torneo. La versión
+        optimista impide que un formulario viejo pise un cambio más reciente.
+        """
         auto_progress = not getattr(self, "_skip_auto_progress", False)
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            update_fields = set(update_fields)
+            update_fields.add("version")
+            kwargs["update_fields"] = update_fields
 
-        if self.is_bye:
-            self.winner = self.team1 or self.team2
-            self.score = ""
-            self.is_walkover = False
-            self.walkover_reason = ""
-        elif not self.is_walkover and self.winner_id is None and (self.score or "").strip() and self.team1_id and self.team2_id:
-            self.derive_winner_from_score()
-
-        if self.is_bye or self.is_walkover or self.score or self.winner_id is not None:
-            self.full_clean()
-
-        if self.pk is not None:
+        with transaction.atomic():
+            # Lock de torneo primero, siempre: es el mutex común de la llave,
+            # las zonas y los resultados. Torneos distintos no se bloquean.
             try:
-                old = Match.objects.get(pk=self.pk)
-            except Match.DoesNotExist:
-                old = None
+                Tournament.objects.select_for_update().get(pk=self.tournament_id)
+            except Tournament.DoesNotExist as exc:
+                raise MatchConflictError(
+                    "El torneo fue eliminado por otra operación. Actualizá la página."
+                ) from exc
+
+            old = None
+            if self.pk is not None:
+                try:
+                    old = Match.objects.select_for_update().get(pk=self.pk)
+                except Match.DoesNotExist as exc:
+                    raise MatchConflictError(
+                        "El partido fue eliminado por otra operación. Actualizá la página."
+                    ) from exc
+                if self.version != old.version:
+                    raise MatchConflictError(
+                        "El partido fue modificado por otra persona mientras lo editabas. "
+                        "Actualizá la página y volvé a intentarlo."
+                    )
+                self.version = old.version + 1
+
+            if self.is_bye:
+                self.winner = self.team1 or self.team2
+                self.score = ""
+                self.is_walkover = False
+                self.walkover_reason = ""
+            elif not self.is_walkover and self.winner_id is None and (self.score or "").strip() and self.team1_id and self.team2_id:
+                self.derive_winner_from_score()
+
+            if self.is_bye or self.is_walkover or self.score or self.winner_id is not None:
+                self.full_clean()
+
             changed = old is not None and (
                 old.score != self.score
                 or old.winner_id != self.winner_id
@@ -1358,7 +1544,6 @@ class Match(models.Model):
                         "La corrección está bloqueada por dependencias con resultado o datos parciales/inconsistentes."
                     )
 
-        with transaction.atomic():
             result = super().save(*args, **kwargs)
             if auto_progress and (self.winner_id is not None or self.is_bye):
                 from core.services.progression import progress_after_match_save

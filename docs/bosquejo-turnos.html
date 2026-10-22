@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bosquejo · Agenda de turnos</title>
+  <link rel="stylesheet" href="../app/static/core/padel.css">
+  <style>
+    body { margin: 0; }
+    .mock-banner {
+      background: #fff7e6;
+      border-bottom: 1px solid #f0d9a8;
+      color: #7a4b00;
+      font-size: .86rem;
+      padding: .55rem 1rem;
+      text-align: center;
+      font-weight: 700;
+    }
+    .mock-shell { max-width: 1240px; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
+    .mock-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      gap: 1rem;
+      align-items: start;
+    }
+    .mock-board,
+    .mock-detail,
+    .mock-new {
+      background: var(--ps-surface);
+      border-radius: var(--ps-radius);
+      box-shadow: var(--ps-shadow);
+      padding: 1rem;
+    }
+    .mock-board { overflow-x: auto; }
+    .mock-board .data-table { min-width: 620px; }
+    .mock-board .data-table th,
+    .mock-board .data-table td { vertical-align: top; }
+    .mock-board .data-table th { white-space: nowrap; }
+    .mock-cell { min-width: 155px; }
+    .mock-free {
+      display: grid;
+      gap: .35rem;
+      justify-items: stretch;
+      border: 1px dashed #9dc9b0;
+      background: #f7fcf9;
+      border-radius: 10px;
+      padding: .5rem;
+      min-height: 78px;
+    }
+    .mock-free .slot { min-height: 28px; background: transparent; }
+    .mock-free .btn { width: 100%; }
+    .mock-busy {
+      display: grid;
+      gap: .3rem;
+      border: 1px solid #f0c7c2;
+      background: #fff8f7;
+      border-radius: 10px;
+      padding: .55rem;
+      min-height: 78px;
+    }
+    .mock-busy--selected { border-color: var(--ps-green); box-shadow: 0 0 0 3px var(--ps-green-soft); }
+    .mock-blocked {
+      display: grid;
+      gap: .3rem;
+      border: 1px solid #d9dfe6;
+      background: #f5f7f9;
+      border-radius: 10px;
+      padding: .55rem;
+      min-height: 78px;
+    }
+    .mock-name { font-weight: 800; line-height: 1.15; }
+    .mock-meta { color: var(--ps-muted); font-size: .76rem; line-height: 1.25; }
+    .mock-cell-actions { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: .25rem; }
+    .mock-cell-actions .btn { flex: 1 1 auto; }
+    .mock-link {
+      border: 0;
+      background: transparent;
+      color: var(--ps-green-dark);
+      cursor: pointer;
+      font: inherit;
+      font-size: .78rem;
+      font-weight: 750;
+      padding: .15rem 0;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .mock-detail { position: sticky; top: 1rem; }
+    .mock-detail h2 { margin: 0 0 .2rem; font-size: 1.05rem; }
+    .mock-detail__time { color: var(--ps-muted); font-size: .86rem; margin-bottom: .9rem; }
+    .mock-customer { font-size: 1.1rem; font-weight: 800; }
+    .mock-detail__rows { display: grid; gap: .45rem; margin: .9rem 0; }
+    .mock-row {
+      display: flex;
+      justify-content: space-between;
+      gap: .8rem;
+      border-bottom: 1px solid #edf1ef;
+      padding-bottom: .45rem;
+      font-size: .9rem;
+    }
+    .mock-row:last-child { border-bottom: 0; }
+    .mock-row span:last-child { font-weight: 750; white-space: nowrap; }
+    .mock-detail__actions { display: grid; gap: .45rem; margin-top: 1rem; }
+    .mock-detail__actions .btn { width: 100%; }
+    .mock-divider { border: 0; border-top: 1px solid #e7ece9; margin: .9rem 0; }
+    .mock-note {
+      background: #f5f9f6;
+      border-radius: 9px;
+      color: var(--ps-muted);
+      font-size: .8rem;
+      padding: .55rem .65rem;
+    }
+    .mock-new { margin-top: 1rem; }
+    .mock-new summary { cursor: pointer; font-weight: 800; }
+    .mock-new[open] summary { margin-bottom: .8rem; }
+    .mock-caption { color: var(--ps-muted); font-size: .82rem; margin: .3rem 0 1rem; }
+    .mock-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: .3rem;
+      font-size: .7rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--ps-muted);
+      font-weight: 750;
+    }
+    @media (max-width: 900px) {
+      .mock-layout { grid-template-columns: 1fr; }
+      .mock-detail { position: static; }
+    }
+  </style>
+</head>
+<body class="padel-page padel-page--panel">
+  <div class="mock-banner">BOSQUEJO · datos de ejemplo · no es la pantalla real</div>
+  <main class="mock-shell">
+    <section class="panel-section">
+      <h1>Turnos</h1>
+      <p class="muted">Agenda del día: reservá, cobrá y liberá sin salir de la grilla.</p>
+      <div class="padel-actions">
+        <a class="btn btn--secondary btn--sm" href="#">Caja y contabilidad</a>
+        <a class="btn btn--secondary btn--sm" href="#">Horarios y feriados</a>
+        <a class="btn btn--secondary btn--sm" href="#">Precio y avisos</a>
+      </div>
+    </section>
+
+    <form class="turnos-filter">
+      <label>Complejo
+        <select><option>Complejo Ibiza</option></select>
+      </label>
+      <label>Día
+        <input type="date" value="2026-10-20">
+      </label>
+      <div class="form-actions"><button class="btn btn--primary btn--sm" type="button">Ver</button></div>
+    </form>
+
+    <div class="day-nav">
+      <a class="btn btn--secondary btn--xs" href="#">← 19/10</a>
+      <span class="day-nav__current">martes 20/10/2026</span>
+      <a class="btn btn--secondary btn--xs" href="#">21/10 →</a>
+      <a class="btn btn--secondary btn--xs" href="#">Hoy</a>
+    </div>
+
+    <div class="turnos-stats">
+      <span class="turnos-stat"><span class="turnos-stat__label">Precio vigente</span><strong>$8.000</strong></span>
+      <span class="turnos-stat"><span class="turnos-stat__label">Reservado del día</span><strong>$16.000</strong></span>
+      <span class="turnos-stat"><span class="turnos-stat__label">Cobrado del día</span><strong>$2.400</strong></span>
+      <span class="turnos-stat"><span class="turnos-stat__label">Saldo en cancha</span><strong>$13.600</strong></span>
+    </div>
+
+    <div class="mock-layout">
+      <section class="mock-board">
+        <p class="mock-tag">Una sola agenda · los turnos y sus acciones están juntos</p>
+        <table class="data-table">
+          <thead>
+            <tr><th>Hora</th><th>Cancha 1</th><th>Cancha 2</th><th>Cancha 3</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">09:00 a 10:30</th>
+              <td class="mock-cell">
+                <div class="mock-free">
+                  <span class="slot slot--free">Libre</span>
+                  <button class="btn btn--xs btn--secondary" type="button">Reservar</button>
+                </div>
+              </td>
+              <td class="mock-cell">
+                <div class="mock-busy mock-busy--selected">
+                  <span class="mock-name">Ana Pérez</span>
+                  <span class="mock-meta">221 555 1234 · Público</span>
+                  <span class="status-pill status-pill--done">Seña $2.400 abonada</span>
+                  <span class="mock-meta">Saldo $5.600 en club</span>
+                  <div class="mock-cell-actions">
+                    <button class="btn btn--xs btn--primary" type="button">Cobrar saldo</button>
+                    <button class="mock-link" type="button">Gestionar</button>
+                  </div>
+                </div>
+              </td>
+              <td class="mock-cell">
+                <div class="mock-blocked">
+                  <span class="slot slot--blocked">Bloqueado</span>
+                  <span class="mock-meta">Mantenimiento</span>
+                  <button class="btn btn--xs btn--secondary" type="button">Liberar</button>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">10:30 a 12:00</th>
+              <td class="mock-cell">
+                <div class="mock-busy">
+                  <span class="mock-name">Carlos Gómez</span>
+                  <span class="mock-meta">221 555 8899 · Panel</span>
+                  <span class="status-pill status-pill--pending">Seña $2.400 pendiente</span>
+                  <div class="mock-cell-actions">
+                    <button class="btn btn--xs btn--secondary" type="button">Cobrar seña</button>
+                    <button class="mock-link" type="button">Gestionar</button>
+                  </div>
+                </div>
+              </td>
+              <td class="mock-cell">
+                <div class="mock-free">
+                  <span class="slot slot--free">Libre</span>
+                  <button class="btn btn--xs btn--secondary" type="button">Reservar</button>
+                </div>
+              </td>
+              <td class="mock-cell">
+                <div class="mock-busy">
+                  <span class="mock-name">Torneo interno</span>
+                  <span class="mock-meta">Reservado por el club</span>
+                  <span class="status-pill status-pill--done">Sin cobro</span>
+                  <button class="mock-link" type="button">Gestionar</button>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">12:00 a 13:30</th>
+              <td class="mock-cell"><div class="mock-free"><span class="slot slot--free">Libre</span><button class="btn btn--xs btn--secondary" type="button">Reservar</button></div></td>
+              <td class="mock-cell"><div class="mock-free"><span class="slot slot--free">Libre</span><button class="btn btn--xs btn--secondary" type="button">Reservar</button></div></td>
+              <td class="mock-cell"><div class="mock-free"><span class="slot slot--free">Libre</span><button class="btn btn--xs btn--secondary" type="button">Reservar</button></div></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="turnos-legend">
+          <span><span class="slot slot--free">Libre</span> se puede reservar</span>
+          <span><span class="slot slot--busy">Reservado</span> con cliente</span>
+          <span><span class="slot slot--blocked">Bloqueado</span> sin cliente</span>
+        </div>
+      </section>
+
+      <aside class="mock-detail">
+        <span class="mock-tag">Detalle del turno</span>
+        <h2>Ana Pérez</h2>
+        <div class="mock-detail__time">09:00 a 10:30 · Cancha 2 · Público</div>
+        <div class="mock-detail__rows">
+          <div class="mock-row"><span>Precio del turno</span><span>$8.000</span></div>
+          <div class="mock-row"><span>Seña</span><span style="color: var(--ps-green-dark);">$2.400 abonada</span></div>
+          <div class="mock-row"><span>Saldo en club</span><span style="color: #9a4b00;">$5.600 pendiente</span></div>
+          <div class="mock-row"><span>Cobrado hasta ahora</span><span>$2.400</span></div>
+        </div>
+        <div class="mock-note">Nota: pidió factura. WhatsApp enviado a las 08:55.</div>
+        <div class="mock-detail__actions">
+          <button class="btn btn--primary" type="button">Cobrar saldo $5.600</button>
+          <button class="btn btn--whatsapp" type="button">Avisar por WhatsApp</button>
+          <button class="btn btn--secondary" type="button">Registrar devolución</button>
+          <button class="btn btn--danger" type="button">Cancelar turno</button>
+        </div>
+        <hr class="mock-divider">
+        <p class="mock-caption">Al tocar otro turno, este panel cambia. En el celular aparece debajo de la grilla o como hoja completa.</p>
+      </aside>
+    </div>
+
+    <details class="mock-new">
+      <summary>+ Nuevo turno o bloqueo</summary>
+      <p class="help">Se abre desde acá o al tocar un horario libre de la grilla. El formulario viene con cancha, fecha y hora ya elegidas.</p>
+      <form class="form-grid">
+        <label>Cancha <select><option>Cancha 2</option></select></label>
+        <label>Horario <select><option>12:00 a 13:30</option></select></label>
+        <label>Cliente <input type="text" placeholder="Ej: Ana Pérez"></label>
+        <label>WhatsApp <input type="tel" placeholder="Ej: 2215551234"></label>
+        <label>Nota <input type="text" placeholder="Ej: paga en efectivo"></label>
+        <div class="form-actions">
+          <button class="btn btn--primary" type="button">Reservar turno</button>
+          <button class="btn btn--secondary" type="button">Bloquear horario</button>
+        </div>
+      </form>
+    </details>
+
+    <p class="mock-caption" style="margin-top: 1.5rem;">
+      <strong>Qué cambia:</strong> desaparece la tabla “Reservas del día” que repetía lo mismo.
+      La grilla pasa a ser la única agenda y cada turno tiene su detalle con las acciones.
+      Las acciones secundarias quedan en “Gestionar” para no llenar la celda.
+    </p>
+  </main>
+</body>
+</html>

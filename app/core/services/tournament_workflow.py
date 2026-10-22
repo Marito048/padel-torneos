@@ -16,7 +16,7 @@ import logging
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from core.models import Match, Tournament, flip_score, implied_winner_id
+from core.models import Match, MatchConflictError, Tournament, flip_score, implied_winner_id
 from core.services.draws import (
     PLAYOFF_STAGES,
     BracketConflictError,
@@ -82,43 +82,78 @@ def register_match_result(
     court=None,
     played_at=None,
     actor=None,
+    expected_version: int | None = None,
 ) -> Match:
-    """Registra o corrige un resultado de forma atómica.
+    """Registra o corrige un resultado de forma atómica y serializada.
 
-    Incluye validación del modelo y progresión automática de la llave. Si la
+    Toma el lock del torneo y del partido en ese orden, re-lee el estado dentro
+    del lock y valida ``expected_version`` si el formulario la envió. Si la
     progresión falla, toda la operación se revierte.
     """
     try:
-        match = Match.objects.select_related("tournament", "team1", "team2").get(pk=match.pk)
+        initial = Match.objects.only("pk", "tournament_id").get(pk=match.pk)
     except Match.DoesNotExist as exc:
-        raise ValidationError("El partido ya no existe.") from exc
-    tournament = match.tournament
-    old = Match.objects.get(pk=match.pk)
-
-    new_score = match.score if score is None else score
-    new_winner = match.winner if winner is None else winner
-    new_walkover = match.is_walkover if is_walkover is None else is_walkover
-    new_reason = match.walkover_reason if walkover_reason is None else walkover_reason
-    new_winner_pk = getattr(new_winner, "pk", new_winner)
-
-    # El ganador elegido manda: si el marcador vino escrito desde la otra pareja
-    # (p. ej. 6-3 6-2 eligiendo ganadora a la segunda), se acomoda y no se rechaza.
-    if winner is not None and not new_walkover and (new_score or "").strip():
-        if match.team1_id and match.team2_id:
-            implied_id = implied_winner_id(new_score, match.team1_id, match.team2_id)
-            if implied_id is not None and implied_id != new_winner_pk:
-                new_score = flip_score(new_score)
-
-    changes = not (
-        (new_score or "") == (old.score or "")
-        and new_winner_pk == old.winner_id
-        and bool(new_walkover) == bool(old.is_walkover)
-        and (new_reason or "") == (old.walkover_reason or "")
-    )
+        raise MatchConflictError("El partido ya no existe. Actualizá la página.") from exc
 
     with transaction.atomic():
-        locked_tournament = Tournament.objects.select_for_update().get(pk=tournament.pk)
-        match = Match.objects.select_related("team1", "team2", "tournament").get(pk=match.pk)
+        try:
+            locked_tournament = Tournament.objects.select_for_update().get(
+                pk=initial.tournament_id
+            )
+        except Tournament.DoesNotExist as exc:
+            raise MatchConflictError(
+                "El torneo fue eliminado por otra operación. Actualizá la página."
+            ) from exc
+        try:
+            match = (
+                Match.objects.select_for_update()
+                .get(pk=match.pk)
+            )
+        except Match.DoesNotExist as exc:
+            raise MatchConflictError(
+                "El partido fue eliminado por otra operación. Actualizá la página."
+            ) from exc
+        match.tournament = locked_tournament
+
+        if expected_version is not None:
+            try:
+                expected = int(expected_version)
+            except (TypeError, ValueError):
+                expected = None
+            if expected is not None and match.version != expected:
+                raise MatchConflictError(
+                    "El partido fue modificado por otra persona mientras cargabas el "
+                    "resultado. Actualizá la página para ver el estado actual."
+                )
+
+        old_score = match.score
+        old_winner_id = match.winner_id
+        old_walkover = match.is_walkover
+        old_reason = match.walkover_reason
+
+        new_score = match.score if score is None else score
+        new_winner = match.winner if winner is None else winner
+        new_walkover = match.is_walkover if is_walkover is None else is_walkover
+        new_reason = match.walkover_reason if walkover_reason is None else walkover_reason
+        new_winner_pk = getattr(new_winner, "pk", new_winner)
+
+        # El ganador elegido manda: si el marcador vino escrito desde la otra
+        # pareja (p. ej. 6-3 6-2 eligiendo ganadora a la segunda), se acomoda y
+        # no se rechaza.
+        if winner is not None and not new_walkover and (new_score or "").strip():
+            if match.team1_id and match.team2_id:
+                implied_id = implied_winner_id(
+                    new_score, match.team1_id, match.team2_id
+                )
+                if implied_id is not None and implied_id != new_winner_pk:
+                    new_score = flip_score(new_score)
+
+        changes = not (
+            (new_score or "") == (old_score or "")
+            and new_winner_pk == old_winner_id
+            and bool(new_walkover) == bool(old_walkover)
+            and (new_reason or "") == (old_reason or "")
+        )
 
         if locked_tournament.status in ("draft", "open"):
             Tournament.objects.filter(pk=locked_tournament.pk).update(status="running")
@@ -191,4 +226,10 @@ def safe_correction(match: Match, *, new_score=None, new_winner=None, new_is_wal
     )
 
 
-__all__ = ["register_match_result", "safe_correction", "can_update_match", "BracketConflictError"]
+__all__ = [
+    "register_match_result",
+    "safe_correction",
+    "can_update_match",
+    "BracketConflictError",
+    "MatchConflictError",
+]

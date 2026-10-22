@@ -148,7 +148,11 @@ def is_slot_past(day: date_cls, start: time_cls, now=None) -> bool:
 
 
 def bookings_for_day(complex_obj, day: date_cls, *, include_cancelled: bool = False) -> list[CourtBooking]:
-    qs = CourtBooking.objects.filter(complex=complex_obj, date=day).select_related("court")
+    qs = (
+        CourtBooking.objects.filter(complex=complex_obj, date=day)
+        .select_related("court")
+        .prefetch_related("court_payments")
+    )
     if not include_cancelled:
         qs = qs.exclude(status="cancelled")
     return list(qs)

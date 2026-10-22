@@ -1,0 +1,17 @@
+{% extends "base_public.html" %}
+
+{% block title %}Demasiadas consultas · Pádel Server{% endblock %}
+
+{% block content %}
+<section class="panel-section">
+  <h1>Demasiadas consultas</h1>
+</section>
+
+<article class="padel-card">
+  <p>Hicimos varias consultas con este navegador en poco tiempo. Esperá unos minutos y volvé a intentar.</p>
+  <p class="help">Si el problema sigue, comunicate con el complejo y pasale el código de tu turno.</p>
+  <div class="padel-actions">
+    <a class="btn btn--primary" href="{% url 'turnos' %}">Volver a turnos</a>
+  </div>
+</article>
+{% endblock %}

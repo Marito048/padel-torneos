@@ -17,7 +17,7 @@ import random
 import secrets
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 
 from core.models import Match, Team, TieBreakAudit, Tournament, Zone, ZoneTeam, classify_score
 
@@ -782,8 +782,8 @@ def sync_bracket_progression(tournament: Tournament, actor=None) -> list[Match]:
     with transaction.atomic():
         locked = Tournament.objects.select_for_update().get(pk=tournament.pk)
         matches = list(
-            Match.objects.filter(tournament=locked, stage__in=PLAYOFF_STAGES)
-            .select_related("team1", "team2", "winner")
+            Match.objects.select_for_update()
+            .filter(tournament=locked, stage__in=PLAYOFF_STAGES)
             .order_by("round_number", "slot")
         )
         by_id = {row.id: row for row in matches}
@@ -803,8 +803,12 @@ def sync_bracket_progression(tournament: Tournament, actor=None) -> list[Match]:
                     "ya tiene resultado cargado. Corregilo antes de continuar."
                 )
             # Sin datos reales en el partido siguiente, la posición es estructural:
-            # se actualiza de forma controlada al ganador correcto.
-            Match.objects.filter(pk=target.pk).update(**{field: row.winner_id})
+            # se actualiza de forma controlada al ganador correcto. La versión
+            # sube para que un formulario abierto antes detecte el cambio.
+            Match.objects.filter(pk=target.pk).update(
+                version=F("version") + 1,
+                **{field: row.winner_id},
+            )
             setattr(target, field, row.winner_id)
 
         final_rows = [row for row in matches if row.stage == "final"]

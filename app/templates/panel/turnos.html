@@ -169,8 +169,8 @@
               <div class="turno-detail__rows">
                 <div class="turno-detail__row"><span>Precio del turno</span><strong>{% if booking.price > 0 %}${{ booking.price|floatformat:"-2" }}{% else %}—{% endif %}</strong></div>
                 <div class="turno-detail__row"><span>Seña</span><strong>
-                  {% if booking.status == "pending_payment" %}
-                    ${{ booking.deposit_amount|floatformat:"-2" }} pendiente
+                  {% if booking.deposit_pending_amount > 0 %}
+                    ${{ booking.deposit_pending_amount|floatformat:"-2" }} pendiente
                   {% elif booking.is_paid and booking.deposit_amount > 0 %}
                     ${{ booking.deposit_amount|floatformat:"-2" }} abonada
                   {% elif booking.deposit_amount > 0 %}
@@ -183,6 +183,9 @@
                   {% else %}—{% endif %}
                 </strong></div>
                 <div class="turno-detail__row"><span>Cobrado hasta ahora</span><strong>${{ booking.paid_amount|floatformat:"-2" }}</strong></div>
+                {% if booking.overpaid_amount > 0 %}
+                  <div class="turno-detail__row"><span>A favor del cliente</span><strong>${{ booking.overpaid_amount|floatformat:"-2" }}</strong></div>
+                {% endif %}
                 <div class="turno-detail__row"><span>Origen</span><strong>{{ booking.get_source_display }}{% if booking.created_by %} ({{ booking.created_by.username }}){% endif %}</strong></div>
               </div>
               {% if booking.note %}<p class="turno-detail__note"><strong>Nota:</strong> {{ booking.note }}</p>{% endif %}
@@ -204,7 +207,7 @@
                         </select>
                       </label>
                     {% endif %}
-                    <button class="btn btn--primary" type="submit">{{ booking.pay_label }}{% if booking.pay_label == "Cobrar saldo" %} ${{ booking.balance_amount|floatformat:"-2" }}{% endif %}</button>
+                    <button class="btn btn--primary" type="submit">{{ booking.pay_label }}{% if booking.pay_amount > 0 %} ${{ booking.pay_amount|floatformat:"-2" }}{% endif %}</button>
                   </form>
                 {% elif booking.pay_action == "marcar_pendiente" %}
                   <form method="post" action="{% url 'panel_turno_accion' %}" class="turno-detail__form" data-confirm="¿Marcar este cobro como pendiente? Se registra una reversión en Caja.">

@@ -5,6 +5,9 @@
 {% block content %}
 <section class="panel-section">
   <h1>Turnos</h1>
+  {% if not online_payments_available %}
+    <p class="alert alert--info">El pago online no está disponible en esta versión. Podés reservar y coordinar la seña con el complejo.</p>
+  {% endif %}
   {% if board %}
     <p class="muted">
       Elegí una cancha y un horario libre. Los turnos duran {{ board.config.slot_minutes }} minutos.
@@ -136,11 +139,12 @@
           {% else %}
             · Seña: <strong>${{ deposit_preview|floatformat:"-2" }}</strong>
             · Saldo en el club: ${{ balance_preview|floatformat:"-2" }}
-            {% if selected_complex.mp_alias %}· pagá la seña por Mercado Pago (alias {{ selected_complex.mp_alias }}){% endif %}
           {% endif %}
         </p>
         {% if online_payment %}
           <p class="help">Te guardamos el horario por {{ hold_minutes }} minutos mientras pagás la seña. El turno se confirma cuando Mercado Pago aprueba el pago.</p>
+        {% elif not online_payments_available %}
+          <p class="help">La seña se coordina directamente con el complejo. El pago online no está disponible en esta versión; el saldo se paga en el club.</p>
         {% else %}
           <p class="help">La reserva queda con la seña pendiente. Podés abonarla por Mercado Pago o coordinarla con el complejo; el saldo se paga en el club.</p>
         {% endif %}

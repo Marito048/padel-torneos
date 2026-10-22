@@ -48,6 +48,19 @@
       <h2>Pago del turno: ${{ booking.price|floatformat:"-2" }}</h2>
     {% endif %}
 
+    {% if not online_payments_available %}
+      {% if not booking.is_paid and booking.status != "cancelled" %}
+        <p class="alert alert--info">El pago online no está disponible en esta versión. Coordiná la seña con el complejo por WhatsApp o al llegar.</p>
+      {% endif %}
+    {% endif %}
+
+    {% if booking.payment_status == "amount_mismatch" %}
+      <p class="alert alert--error">El importe acreditado no coincide con la seña esperada. El complejo va a revisar el pago antes de confirmar el turno.</p>
+    {% endif %}
+    {% if booking.payment_status == "charged_back" %}
+      <p class="alert alert--error">Mercado Pago informó un contracargo. El complejo va a revisar el caso y coordinar la devolución.</p>
+    {% endif %}
+
     {% if booking.is_paid %}
       {% if booking.deposit_amount > 0 %}
         {% if booking.balance_paid %}
@@ -70,7 +83,9 @@
       {% endif %}
     {% elif booking.status == "pending_payment" %}
       <p><span class="status-pill status-pill--pending">Seña pendiente</span></p>
-      {% if booking.complex.has_mp_token %}
+      {% if not online_payments_available %}
+        <p class="help">La seña se coordina con el complejo. Si este turno tenía una retención de pago online, no se va a procesar en esta versión.</p>
+      {% elif booking.complex.online_payments_enabled %}
         {% if booking.payment_expires_at %}
           <p class="muted">
             Te guardamos el horario hasta las {{ booking.payment_expires_at|time:"H:i" }}.
@@ -92,21 +107,34 @@
       {% endif %}
     {% else %}
       <p><span class="status-pill status-pill--pending">Pago pendiente</span></p>
-      {% if booking.complex.mp_alias or booking.complex.mp_link %}
-        <p class="muted">Podés abonarlo por Mercado Pago:</p>
+      {% if online_payments_available %}
+        {% if booking.complex.mp_alias or booking.complex.mp_link %}
+          <p class="muted">Podés abonarlo por Mercado Pago:</p>
+          {% if booking.complex.mp_alias %}
+            <p class="mp-alias">
+              Alias: <strong>{{ booking.complex.mp_alias }}</strong>
+              {% if booking.complex.mp_holder %}<span class="muted">({{ booking.complex.mp_holder }})</span>{% endif %}
+              <button class="btn btn--secondary btn--sm" type="button" data-copy="{{ booking.complex.mp_alias }}">Copiar</button>
+            </p>
+          {% endif %}
+          {% if booking.complex.mp_link %}
+            <p><a class="btn btn--primary" href="{{ booking.complex.mp_link }}" target="_blank" rel="noopener">Pagar con Mercado Pago</a></p>
+          {% endif %}
+          <p class="help">Cuando lo abones, avisale al complejo por WhatsApp para que lo registren.</p>
+        {% else %}
+          <p class="help">El complejo todavía no cargó los datos de cobro; coordiná el pago al llegar o por WhatsApp.</p>
+        {% endif %}
+      {% else %}
         {% if booking.complex.mp_alias %}
+          <p class="muted">Datos para transferencia manual:</p>
           <p class="mp-alias">
             Alias: <strong>{{ booking.complex.mp_alias }}</strong>
             {% if booking.complex.mp_holder %}<span class="muted">({{ booking.complex.mp_holder }})</span>{% endif %}
             <button class="btn btn--secondary btn--sm" type="button" data-copy="{{ booking.complex.mp_alias }}">Copiar</button>
           </p>
+        {% else %}
+          <p class="help">Coordiná la seña con el complejo por WhatsApp o al llegar.</p>
         {% endif %}
-        {% if booking.complex.mp_link %}
-          <p><a class="btn btn--primary" href="{{ booking.complex.mp_link }}" target="_blank" rel="noopener">Pagar con Mercado Pago</a></p>
-        {% endif %}
-        <p class="help">Cuando lo abones, avisale al complejo por WhatsApp para que lo registren.</p>
-      {% else %}
-        <p class="help">El complejo todavía no cargó los datos de cobro; coordiná el pago al llegar o por WhatsApp.</p>
       {% endif %}
     {% endif %}
   </article>

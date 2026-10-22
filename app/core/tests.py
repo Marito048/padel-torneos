@@ -8,6 +8,7 @@ auditables y generación/progresión automática de llaves con descansos.
 import re
 
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.parse import quote
 
 from django.contrib.auth import get_user_model
@@ -2755,6 +2756,29 @@ class SignupRequestTests(TestCase):
             )
         self.assertContains(response, "Te vamos a avisar")
         self.assertTrue(RegistrationRequest.objects.filter(email="falla@correo.com").exists())
+
+    @override_settings(
+        WHATSAPP_ALERT_PHONE="+5493415555555", WHATSAPP_ALERT_APIKEY="clave-secreta"
+    )
+    def test_whatsapp_failure_does_not_log_the_api_key_or_message(self):
+        failing_url = (
+            "https://api.callmebot.com/whatsapp.php?"
+            "apikey=clave-secreta&text=datos-del-cliente"
+        )
+        with patch(
+            "core.notifications.urlopen",
+            side_effect=HTTPError(failing_url, 500, "fallo", None, None),
+        ):
+            with self.assertLogs("core.notifications", level="WARNING") as captured:
+                response = self.client.post(
+                    "/registrarse/",
+                    self._signup_payload(email="log-seguro@correo.com"),
+                    follow=True,
+                )
+        self.assertContains(response, "Te vamos a avisar")
+        output = "\n".join(captured.output)
+        self.assertNotIn("clave-secreta", output)
+        self.assertNotIn("datos-del-cliente", output)
 
     def test_settings_shows_requests_and_prefills_data_for_superuser(self):
         RegistrationRequest.objects.create(

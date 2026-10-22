@@ -5,6 +5,8 @@ la reserva pública sin registro (alta, conflictos y cancelación) y la gestión
 desde el panel (reservas manuales, bloqueos y configuración de horarios).
 """
 
+import hashlib
+import hmac
 import json
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -12,7 +14,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -200,6 +202,17 @@ class PublicBookingTests(TurnosFixtureMixin, TestCase):
         self.assertEqual(booking.customer_name, "Ana Pérez")
         self.assertEqual(len(booking.code), 8)
         self.assertRedirects(response, reverse("turno_confirmado", args=[booking.code]))
+
+    def test_complex_without_mercadopago_keeps_the_manual_flow(self):
+        self.assertFalse(self.complex.has_mp_token)
+        self.assertFalse(self.complex.online_payments_enabled)
+        response = self.reserve()
+        self.assertEqual(response.status_code, 302)
+        booking = CourtBooking.objects.get()
+        self.assertEqual(booking.status, "booked")
+        self.assertIsNone(booking.payment_expires_at)
+        self.assertEqual(booking.payment_status, "")
+        self.assertFalse(booking.payment_provider)
 
     def test_booked_slot_cannot_be_reserved_again(self):
         self.reserve()
@@ -689,8 +702,17 @@ class PaymentAndWhatsAppTests(TurnosFixtureMixin, TestCase):
         self.assertContains(response, "Guardar ajustes")
 
 
+@override_settings(
+    MERCADO_PAGO_ONLINE_PAYMENTS_ENABLED=True,
+    MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET=False,
+)
 class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
-    """Seña obligatoria del 30% con Checkout Pro y confirmación automática."""
+    """Seña obligatoria del 30% con Checkout Pro y confirmación automática.
+
+    La mayoría de estas pruebas usa el modo histórico sin secreto para aislar
+    el flujo de pagos. Las pruebas de ``fail-closed`` activan explícitamente la
+    exigencia de firma, que es el valor por defecto y obligatorio en producción.
+    """
 
     def setUp(self):
         self.complex = self.make_complex(booking_price=Decimal("8000"))
@@ -727,6 +749,7 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
             "status": status,
             "external_reference": reference if reference is not None else booking.code,
             "transaction_amount": amount,
+            "currency_id": "ARS",
         }
 
     def test_public_booking_holds_slot_and_requires_deposit(self):
@@ -763,6 +786,7 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         payload = args[1]
         self.assertEqual(payload["external_reference"], booking.code)
         self.assertEqual(payload["items"][0]["unit_price"], 2400.0)
+        self.assertEqual(payload["items"][0]["currency_id"], "ARS")
         self.assertTrue(payload["expires"])
         self.assertLess(payload["expiration_date_from"], payload["expiration_date_to"])
         self.assertTrue(payload["notification_url"].endswith(f"/turnos/pago/mercadopago/{self.complex.slug}/"))
@@ -777,6 +801,79 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
             response = self.client.get(reverse("turno_pagar", args=[booking.code]))
         self.assertEqual(response.url, "https://mp.test/checkout")
         self.assertEqual(create.call_count, 1)
+
+    @override_settings(MERCADO_PAGO_CURRENCY="UYU")
+    def test_checkout_uses_the_configured_currency(self):
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.create_checkout_preference") as create:
+            create.return_value = {"id": "pref-1", "init_point": "https://mp.test/checkout"}
+            self.client.get(reverse("turno_pagar", args=[booking.code]))
+        payload = create.call_args.args[1]
+        self.assertEqual(payload["items"][0]["currency_id"], "UYU")
+
+    def test_checkout_and_pay_button_are_blocked_without_webhook_secret(self):
+        booking = self.make_pending()
+        with override_settings(MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET=True):
+            self.assertFalse(self.complex.online_payments_enabled)
+            response = self.client.get(
+                reverse("turno_confirmado", args=[booking.code])
+            )
+            self.assertNotContains(response, "Pagar seña con Mercado Pago")
+            with mock.patch(
+                "core.views.payments_service.create_checkout_preference"
+            ) as create:
+                response = self.client.get(reverse("turno_pagar", args=[booking.code]))
+            self.assertEqual(response.status_code, 302)
+            create.assert_not_called()
+        booking.refresh_from_db()
+        self.assertEqual(booking.payment_preference_id, "")
+
+    def test_public_reservation_falls_back_to_manual_without_webhook_secret(self):
+        with override_settings(MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET=True):
+            with mock.patch("core.views.notify_court_booking"):
+                self.reserve()
+        booking = CourtBooking.objects.get()
+        self.assertEqual(booking.status, "booked")
+        self.assertIsNone(booking.payment_expires_at)
+        self.assertEqual(booking.payment_status, "")
+
+    def test_webhook_fails_closed_when_the_secret_is_required_but_missing(self):
+        booking = self.make_pending()
+        with override_settings(MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET=True), mock.patch(
+            "core.views.payments_service.fetch_payment"
+        ) as fetch:
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 503)
+        fetch.assert_not_called()
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending_payment")
+        self.assertFalse(booking.is_paid)
+
+    def test_webhook_accepts_a_valid_signature_when_the_secret_is_required(self):
+        secret = "secreto-webhook-1234567890"
+        request_id = "request-abc"
+        self.complex.mp_webhook_secret = secret
+        self.complex.save(update_fields=["mp_webhook_secret_encrypted"])
+        booking = self.make_pending()
+        with override_settings(MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET=True), mock.patch(
+            "core.views.payments_service.fetch_payment"
+        ) as fetch, mock.patch("core.views.notify_court_booking"):
+            fetch.return_value = self.payment_payload(booking)
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+                HTTP_X_REQUEST_ID=request_id,
+                HTTP_X_SIGNATURE=self.signature(secret, "payment-123", request_id),
+            )
+        self.assertEqual(response.status_code, 200)
+        booking.refresh_from_db()
+        self.assertTrue(booking.is_paid)
+        self.assertEqual(booking.status, "booked")
 
     def test_webhook_approves_and_marks_paid_once(self):
         booking = self.make_pending()
@@ -878,6 +975,12 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         self.assertEqual(booking.status, "pending_payment")
         self.assertFalse(booking.is_paid)
         self.assertEqual(booking.payment_status, "amount_mismatch")
+        # El dinero acreditado no se oculta: queda en caja para revisión,
+        # aunque no alcance para confirmar la seña.
+        self.assertEqual(booking.paid_amount, Decimal("100.00"))
+        self.assertEqual(
+            CourtPayment.objects.filter(booking=booking, kind="deposit").count(), 1
+        )
 
     def test_webhook_ignores_another_reference(self):
         booking = self.make_pending()
@@ -891,6 +994,186 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.status, "pending_payment")
         self.assertFalse(booking.is_paid)
+
+    def signature(self, secret, payment_id, request_id, timestamp="1704908010"):
+        manifest = f"id:{payment_id};request-id:{request_id};ts:{timestamp};"
+        digest = hmac.new(
+            secret.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        return f"ts={timestamp},v1={digest}"
+
+    def test_webhook_rejects_missing_signature_when_the_secret_is_configured(self):
+        self.complex.mp_webhook_secret = "secreto-webhook-1234567890"
+        self.complex.save(update_fields=["mp_webhook_secret_encrypted"])
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch:
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 401)
+        fetch.assert_not_called()
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending_payment")
+        self.assertFalse(booking.is_paid)
+
+    def test_webhook_accepts_a_valid_signature(self):
+        secret = "secreto-webhook-1234567890"
+        request_id = "request-abc"
+        self.complex.mp_webhook_secret = secret
+        self.complex.save(update_fields=["mp_webhook_secret_encrypted"])
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch, mock.patch(
+            "core.views.notify_court_booking"
+        ):
+            fetch.return_value = self.payment_payload(booking)
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+                HTTP_X_REQUEST_ID=request_id,
+                HTTP_X_SIGNATURE=self.signature(secret, "payment-123", request_id),
+            )
+        self.assertEqual(response.status_code, 200)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "booked")
+        self.assertTrue(booking.is_paid)
+
+    def test_webhook_rejects_an_invalid_signature(self):
+        self.complex.mp_webhook_secret = "secreto-webhook-1234567890"
+        self.complex.save(update_fields=["mp_webhook_secret_encrypted"])
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch:
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+                HTTP_X_REQUEST_ID="request-abc",
+                HTTP_X_SIGNATURE="ts=1704908010,v1=00",
+            )
+        self.assertEqual(response.status_code, 401)
+        fetch.assert_not_called()
+        booking.refresh_from_db()
+        self.assertFalse(booking.is_paid)
+
+    def test_webhook_fails_closed_if_the_saved_secret_cannot_be_decrypted(self):
+        self.complex.mp_webhook_secret = "secreto-webhook-1234567890"
+        self.complex.save(update_fields=["mp_webhook_secret_encrypted"])
+        Complex.objects.filter(pk=self.complex.pk).update(
+            mp_webhook_secret_encrypted="ciphertext-invalido"
+        )
+        booking = self.make_pending()
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch:
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps({"type": "payment", "data": {"id": "payment-123"}}),
+                content_type="application/json",
+                HTTP_X_REQUEST_ID="request-abc",
+                HTTP_X_SIGNATURE="ts=1704908010,v1=00",
+            )
+        self.assertEqual(response.status_code, 401)
+        fetch.assert_not_called()
+        booking.refresh_from_db()
+        self.assertFalse(booking.is_paid)
+
+    def test_merchant_order_notification_processes_its_payments(self):
+        booking = self.make_pending()
+        with mock.patch(
+            "core.views.payments_service.fetch_merchant_order"
+        ) as fetch_order, mock.patch(
+            "core.views.payments_service.fetch_payment"
+        ) as fetch_payment, mock.patch("core.views.notify_court_booking"):
+            fetch_order.return_value = {"payments": [{"id": "payment-123"}]}
+            fetch_payment.return_value = self.payment_payload(booking)
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps(
+                    {"type": "topic_merchant_order_wh", "data": {"id": "order-123"}}
+                ),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "booked")
+        self.assertTrue(booking.is_paid)
+        fetch_order.assert_called_once()
+        fetch_payment.assert_called_once_with(
+            self.complex.mp_access_token, "payment-123"
+        )
+
+    def test_chargeback_notification_marks_the_booking_for_manual_review(self):
+        booking = self.make_pending()
+        with mock.patch(
+            "core.views.payments_service.fetch_chargeback"
+        ) as fetch_chargeback, mock.patch(
+            "core.views.payments_service.fetch_payment"
+        ) as fetch_payment:
+            fetch_chargeback.return_value = {
+                "id": "chargeback-1",
+                "payment_id": "payment-123",
+                "status": "in_process",
+            }
+            fetch_payment.return_value = self.payment_payload(booking)
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps(
+                    {
+                        "type": "topic_chargebacks_wh",
+                        "data": {"id": "chargeback-1", "payment_id": "payment-123"},
+                    }
+                ),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        booking.refresh_from_db()
+        self.assertEqual(booking.payment_status, "charged_back")
+        self.assertFalse(booking.is_paid)
+        self.assertFalse(CourtPayment.objects.filter(booking=booking).exists())
+        self.assertTrue(
+            any(
+                "sin movimiento de contracargo" in issue
+                for issue in cash_service.audit_booking(booking)
+            )
+        )
+
+    def test_chargeback_transient_failure_returns_retry_status(self):
+        booking = self.make_pending()
+        with mock.patch(
+            "core.views.payments_service.fetch_chargeback"
+        ) as fetch_chargeback, mock.patch(
+            "core.views.payments_service.fetch_payment"
+        ) as fetch_payment:
+            fetch_chargeback.return_value = {
+                "id": "chargeback-1",
+                "payment_id": "payment-123",
+            }
+            fetch_payment.side_effect = payments_service.MercadoPagoError(
+                "temporal", status_code=500
+            )
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps(
+                    {"type": "topic_chargebacks_wh", "data": {"id": "chargeback-1"}}
+                ),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 502)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending_payment")
+
+    def test_return_from_checkout_rejects_a_payment_without_reference(self):
+        booking = self.make_pending()
+        payload = self.payment_payload(booking, reference="")
+        with mock.patch("core.views.payments_service.fetch_payment") as fetch:
+            fetch.return_value = payload
+            response = self.client.get(
+                reverse("turno_pago_retorno", args=[booking.code]) + "?payment_id=payment-123"
+            )
+        self.assertEqual(response.status_code, 302)
+        booking.refresh_from_db()
+        self.assertFalse(booking.is_paid)
+        self.assertEqual(booking.status, "pending_payment")
 
     def test_expired_hold_is_released_and_slot_can_be_reserved_again(self):
         booking = self.make_pending()
@@ -1105,6 +1388,67 @@ class MercadoPagoDepositTests(TurnosFixtureMixin, TestCase):
         )
         self.complex.refresh_from_db()
         self.assertFalse(self.complex.has_mp_token)
+
+    def test_settings_warn_when_the_token_has_no_webhook_secret(self):
+        admin = User.objects.create_superuser("admin-secreto", password="clave-segura-123")
+        self.client.force_login(admin)
+        with override_settings(MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET=True):
+            response = self.client.post(
+                reverse("panel_horarios_accion"),
+                {
+                    "complejo": self.complex.slug,
+                    "accion": "guardar_ajustes",
+                    "precio": "8000",
+                },
+                follow=True,
+            )
+        self.assertContains(response, "falta el secreto")
+        self.complex.refresh_from_db()
+        with override_settings(MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET=True):
+            self.assertFalse(self.complex.online_payments_enabled)
+
+    def test_settings_save_and_clear_the_webhook_secret(self):
+        admin = User.objects.create_superuser("admin-webhook", password="clave-segura-123")
+        self.client.force_login(admin)
+        secret = "secreto-webhook-1234567890"
+        response = self.client.post(
+            reverse("panel_horarios_accion"),
+            {
+                "complejo": self.complex.slug,
+                "accion": "guardar_ajustes",
+                "precio": "8000",
+                "mp_webhook_secret": secret,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.complex.refresh_from_db()
+        self.assertTrue(self.complex.has_mp_webhook_secret)
+        self.assertEqual(self.complex.mp_webhook_secret, secret)
+        self.assertNotIn(secret, self.complex.mp_webhook_secret_encrypted)
+
+        self.client.post(
+            reverse("panel_horarios_accion"),
+            {
+                "complejo": self.complex.slug,
+                "accion": "guardar_ajustes",
+                "precio": "8000",
+                "mp_clear_webhook_secret": "on",
+            },
+        )
+        self.complex.refresh_from_db()
+        self.assertFalse(self.complex.has_mp_webhook_secret)
+
+    def test_settings_show_webhook_secret_status_without_the_secret(self):
+        self.complex.mp_webhook_secret = "secreto-webhook-1234567890"
+        self.complex.save(update_fields=["mp_webhook_secret_encrypted"])
+        admin = User.objects.create_superuser("admin-webhook-ui", password="clave-segura-123")
+        self.client.force_login(admin)
+        response = self.client.get(
+            reverse("panel_turnos_ajustes"), {"complejo": self.complex.slug}
+        )
+        self.assertContains(response, "Secreto de firma del webhook")
+        self.assertContains(response, "Dejalo vacío para conservar el secreto")
+        self.assertNotContains(response, "secreto-webhook-1234567890")
 
     def test_settings_show_token_status_without_the_secret(self):
         admin = User.objects.create_superuser("admin-token-ui", password="clave-segura-123")
@@ -1338,6 +1682,7 @@ class CajaTurnosTests(TurnosFixtureMixin, TestCase):
                 "monto": "1000,50",
                 "metodo": "cash",
                 "nota": "Acuerdo con el cliente",
+                "refund_token": "refund-token-0000000000000001",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -1354,10 +1699,28 @@ class CajaTurnosTests(TurnosFixtureMixin, TestCase):
                 "codigo": self.booking.code,
                 "monto": "2000",
                 "metodo": "cash",
+                "refund_token": "refund-token-0000000000000002",
             },
         )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(CourtPayment.objects.filter(booking=self.booking, kind="refund").count(), 1)
+
+    def test_manual_refund_without_form_token_is_rejected(self):
+        self.record(kind="deposit", method="cash", amount="2400.00")
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("panel_turnos_caja_devolucion"),
+            {
+                "complejo": self.complex.slug,
+                "codigo": self.booking.code,
+                "monto": "1000",
+                "metodo": "cash",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            CourtPayment.objects.filter(booking=self.booking, kind="refund").exists()
+        )
 
     def test_staff_of_another_complex_cannot_close_or_refund(self):
         other_complex = self.make_complex(slug="ajeno-caja", name="Complejo Ajeno")
@@ -1431,3 +1794,181 @@ class PublicCalendarViewTests(TurnosFixtureMixin, TestCase):
         # La ventana de reserva (60 días) siempre toca el mes siguiente.
         self.assertContains(response, f"mes={next_month.strftime('%Y-%m')}")
 
+
+
+class OnlinePaymentsDisabledTests(TurnosFixtureMixin, TestCase):
+    """Primera versión: la integración existe pero está apagada en el servidor."""
+
+    def setUp(self):
+        self.complex = self.make_complex(booking_price=Decimal("8000"))
+        self.complex.mp_alias = "padel.principal"
+        self.complex.mp_access_token = "APP_USR-12345678901234567890"
+        self.complex.mp_webhook_secret = "secreto-webhook-1234567890"
+        self.complex.save(
+            update_fields=[
+                "booking_price",
+                "mp_alias",
+                "mp_access_token_encrypted",
+                "mp_webhook_secret_encrypted",
+            ]
+        )
+        self.court = self.make_court(self.complex)
+        self.day = timezone.localdate() + timedelta(days=5)
+        self.make_schedule(self.complex, day_type=schedule_service.day_type_for(self.day))
+        self.admin = User.objects.create_superuser(
+            "admin-sin-online", password="clave-segura-123"
+        )
+
+    def reserve(self, **overrides):
+        data = {
+            "complejo": self.complex.slug,
+            "fecha": self.day.isoformat(),
+            "cancha": self.court.pk,
+            "hora": "09:00",
+            "nombre": "Ana Manual",
+            "telefono": "2215551234",
+            "nota": "",
+        }
+        data.update(overrides)
+        return self.client.post(reverse("turno_reservar"), data)
+
+    def make_pending(self):
+        return self.make_booking(
+            self.complex,
+            self.court,
+            self.day,
+            time(10, 30),
+            status="pending_payment",
+            customer_name="Pago deshabilitado",
+            customer_phone="2215551234",
+            price=Decimal("8000"),
+            deposit_amount=Decimal("2400"),
+            payment_expires_at=timezone.now() + timedelta(minutes=15),
+            payment_provider="mercadopago",
+            payment_status="pending",
+        )
+
+    def test_public_reservation_stays_manual_even_with_mp_configured(self):
+        self.assertFalse(self.complex.online_payments_enabled)
+        with mock.patch("core.views.notify_court_booking") as notify:
+            response = self.reserve()
+        self.assertEqual(response.status_code, 302)
+        booking = CourtBooking.objects.get()
+        self.assertEqual(booking.status, "booked")
+        self.assertIsNone(booking.payment_expires_at)
+        self.assertEqual(booking.payment_status, "")
+        self.assertFalse(booking.payment_provider)
+        notify.assert_called_once()
+
+        confirmation = self.client.get(
+            reverse("turno_confirmado", args=[booking.code])
+        )
+        self.assertContains(confirmation, "El pago online no está disponible")
+        self.assertNotContains(confirmation, "Pagar seña con Mercado Pago")
+
+    def test_checkout_url_does_not_create_a_preference_or_cancel_a_hold(self):
+        booking = self.make_pending()
+        booking.payment_expires_at = timezone.now() - timedelta(minutes=1)
+        booking.save(update_fields=["payment_expires_at"])
+        with mock.patch(
+            "core.views.payments_service.create_checkout_preference"
+        ) as create:
+            response = self.client.get(reverse("turno_pagar", args=[booking.code]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "El pago online no está disponible")
+        create.assert_not_called()
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending_payment")
+        self.assertEqual(booking.payment_preference_id, "")
+        self.assertEqual(booking.payment_init_point, "")
+        self.assertFalse(CourtPayment.objects.filter(booking=booking).exists())
+
+    def test_return_does_not_fetch_apply_or_cancel_a_payment(self):
+        booking = self.make_pending()
+        # Aun con la retención vencida, el retorno deshabilitado no debe
+        # ejecutar el mantenimiento que cancelaría la reserva.
+        booking.payment_expires_at = timezone.now() - timedelta(minutes=1)
+        booking.save(update_fields=["payment_expires_at"])
+        with mock.patch(
+            "core.views.payments_service.fetch_payment"
+        ) as fetch, mock.patch("core.views._apply_mp_payment") as apply:
+            response = self.client.get(
+                reverse("turno_pago_retorno", args=[booking.code]),
+                {"payment_id": "payment-123"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "El pago online no está disponible")
+        fetch.assert_not_called()
+        apply.assert_not_called()
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending_payment")
+        self.assertFalse(booking.is_paid)
+        self.assertFalse(CourtPayment.objects.filter(booking=booking).exists())
+
+    def test_webhook_is_acked_without_processing_or_moving_cash(self):
+        booking = self.make_pending()
+        with mock.patch(
+            "core.views.payments_service.fetch_payment"
+        ) as fetch:
+            response = self.client.post(
+                reverse("turno_pago_webhook", args=[self.complex.slug]),
+                data=json.dumps(
+                    {"type": "payment", "data": {"id": "payment-123"}}
+                ),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json().get("ignored"), "online_payments_disabled")
+        fetch.assert_not_called()
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending_payment")
+        self.assertFalse(booking.is_paid)
+        self.assertFalse(CourtPayment.objects.filter(booking=booking).exists())
+
+    def test_settings_page_reports_disabled_without_requiring_secrets(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(
+            reverse("panel_turnos_ajustes"),
+            {"complejo": self.complex.slug},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "El pago online está deshabilitado en esta versión")
+        self.assertContains(response, "Cobro online de la seña (deshabilitado)")
+        self.assertNotContains(response, "falta el secreto de firma")
+
+    def test_manual_collection_and_refund_keep_working(self):
+        booking = self.make_pending()
+        cash_service.record_payment(
+            booking,
+            kind="deposit",
+            method="cash",
+            amount=Decimal("2400.00"),
+            user=self.admin,
+            note="Cobro manual habilitado",
+        )
+        booking.refresh_from_db()
+        self.assertTrue(booking.is_paid)
+
+        first = cash_service.record_manual_refund(
+            booking,
+            Decimal("1000.00"),
+            "cash",
+            self.admin,
+            note="Devolución manual",
+            idempotency_key="sin-online-1",
+        )
+        second = cash_service.record_manual_refund(
+            booking,
+            Decimal("1000.00"),
+            "cash",
+            self.admin,
+            note="Devolución manual",
+            idempotency_key="sin-online-1",
+        )
+        self.assertEqual(first.pk, second.pk)
+        booking.refresh_from_db()
+        self.assertEqual(booking.paid_amount, Decimal("1400.00"))
+        self.assertFalse(booking.balance_paid)
+        self.assertEqual(
+            CourtPayment.objects.filter(booking=booking, kind="refund").count(), 1
+        )

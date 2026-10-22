@@ -9,12 +9,13 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
 - **Turnos de cancha**: página pública **/turnos/** para reservar sin registrarse (nombre y
   WhatsApp), con **calendario mensual** para elegir el día (días cerrados y fuera de la ventana
   atenuados, «hoy» marcado, navegación de meses, ventana de 60 días) y grilla de horarios libres
-  por cancha, código de confirmación y cancelación online. El **precio del turno**, la **seña
-  online** y los datos de cobro manual (**alias/CVU, titular y link de Mercado Pago**) se
-  configuran por complejo en **Turnos → Precio y avisos**. Con un **access token de Mercado Pago**
-  cargado, la reserva pública retiene el horario unos minutos y cobra una **seña del 30%** con
-  **Checkout Pro**; el turno se confirma solo cuando Mercado Pago aprueba el pago y el **saldo se
-  paga en el club**. Sin token se mantiene el cobro manual. El panel registra la seña y el saldo
+  por cancha, código de confirmación y cancelación online. El **precio del turno**, la **seña**
+  y los datos de cobro manual (**alias/CVU, titular y link de Mercado Pago**) se configuran por
+  complejo en **Turnos → Precio y avisos**. En esta primera versión la integración de
+  **Mercado Pago Checkout Pro está deshabilitada**: la reserva pública se confirma en modo
+  manual, sin preferencias, retenciones ni webhooks de pago, y el complejo cobra la seña y el
+  saldo desde el panel. La integración, los modelos y las credenciales cifradas se conservan
+  para la segunda etapa. El panel registra la seña y el saldo
   por separado, permite marcar ambos como cobrados, elegir el medio de pago y lleva la **caja**
   con movimientos, devoluciones, cierres diarios y exportación CSV. Cada reserva puede avisarse por **WhatsApp**:
   el cliente al complejo desde la confirmación y el panel al cliente con el botón «Avisar por WhatsApp»
@@ -116,8 +117,9 @@ y en el LXC Debian de Proxmox corre nativo (gunicorn + systemd + Postgres del si
 
 ## Manual para administradores de canchas
 
-Guía práctica para responsables y personal de los complejos: turnos, cobros de seña y saldo,
-Mercado Pago, torneos, usuarios y avisos por WhatsApp.
+Guía práctica para responsables y personal de los complejos: turnos, cobros manuales de seña y
+saldo, caja, torneos, usuarios y avisos por WhatsApp. Incluye la integración de Mercado Pago
+como funcionalidad diferida para la segunda etapa.
 
 - [Manual en PDF](docs/manual-administradores.pdf)
 - [Versión HTML imprimible](docs/manual-administradores.html)
@@ -195,6 +197,23 @@ ALLOWED_HOSTS=...,padel-server.tail2e85f1.ts.net
 CSRF_TRUSTED_ORIGINS=...,https://padel-server.tail2e85f1.ts.net
 ```
 
+Funnel es un túnel L4/TCP: no entrega la IP real del visitante. En el despliegue
+nativo del README (Funnel → `127.0.0.1:8080`, sin Caddy), Django verá
+`127.0.0.1` para todos y `TRUSTED_PROXY_IPS` debe quedar vacío. Si usás el
+`docker-compose` con Caddy, Django verá la IP privada del contenedor de Caddy y
+recién ahí tiene sentido declarar esa red en `TRUSTED_PROXY_IPS` (CIDR) para
+leer `X-Forwarded-For`; si queda vacío, se ignora el header y todos comparten la
+IP de Caddy, que es el comportamiento seguro por defecto. Las reservas públicas
+tienen una cuota por teléfono guardada en la base
+(`PUBLIC_RESERVATION_MAX_ACTIVE`, `PUBLIC_RESERVATION_MAX_PER_HOUR`) y el código
+de autoinscripción se limita por sesión, no por IP. La solicitud pública de
+cuenta también tiene un límite por sesión
+(`SIGNUP_REQUEST_MAX_PER_WINDOW`, `SIGNUP_REQUEST_WINDOW_SECONDS`). Las
+consultas y acciones con código de turno tienen su propio límite por sesión
+(`PUBLIC_CODE_MAX_PER_WINDOW`, `PUBLIC_CODE_WINDOW_SECONDS`). Ambos usan la
+caché local del worker y pueden evadirse rotando cookies, por lo que no
+reemplazan la revisión manual ni la entropía del código.
+
 **Alternativa con ngrok** (túnel sin abrir puertos): `ngrok http 80` (o `ngrok http 8000`
 directo a la app). Recomendado usar el dominio estático gratuito de ngrok para que la URL no
 cambie. En modo dev `ALLOWED_HOSTS=["*"]` deja entrar por el dominio de ngrok y, al ser mismo
@@ -215,38 +234,56 @@ Para Google OAuth:
 4. Si cambiás de túnel o dominio (ngrok, Tailscale Funnel, dominio propio), actualizá el origen
    y el URI de redirección en Google Cloud Console.
 
-## Cobro online de la seña (Mercado Pago Checkout Pro)
+## Pagos online con Mercado Pago (diferidos en esta versión)
 
-El turnero puede cobrar una **seña obligatoria del 30%** al reservar desde la página pública. El
-saldo restante se paga en el club. Cada complejo usa **su propia cuenta de Mercado Pago**.
+**Esta versión no inicia ni procesa pagos online.** El interruptor
+`MERCADO_PAGO_ONLINE_PAYMENTS_ENABLED` vale `false` por defecto y
+`config.settings.prod` lo fuerza a `false` aunque una variable de entorno intente
+activarlo. La integración sigue en el código para la segunda etapa, pero el
+servidor no crea preferencias, no consulta pagos desde retornos o webhooks y no
+modifica reservas ni caja por esos canales.
 
-1. Entrar a [Mercado Pago Developers](https://www.mercadopago.com.ar/developers/panel/app), crear
-   una aplicación y copiar el **Access token** de producción (`APP_USR-...`). Para probar sin
-   cobrar de verdad se puede usar un token de prueba (`TEST-...`) y usuarios de prueba de MP.
-2. En el panel, ir a **Turnos → Precio y avisos**, cargar el token y guardar. El token se guarda
-   **cifrado** con una clave derivada del `SECRET_KEY` y no se vuelve a mostrar. Si se cambia el
-   `SECRET_KEY`, hay que volver a cargarlo.
-3. El precio del turno debe ser mayor a 0. Al reservar, el sistema:
-   - crea una **pre-reserva** y retiene el horario durante `BOOKING_HOLD_MINUTES` (15 por defecto);
-   - crea una preferencia de Checkout Pro por la seña y redirige a Mercado Pago;
-   - confirma el turno cuando el pago aparece **aprobado**, consultando el pago contra la API
-     (webhook y vuelta del checkout, sin confiar en los parámetros de la URL);
-   - libera el horario automáticamente si la seña no se acredita antes del vencimiento.
-4. El panel muestra la seña y el saldo por separado. Al marcar un cobro manual se elige el medio
-   de pago (efectivo, transferencia, tarjeta u otro); «Cobrar saldo» registra el saldo en el club
-   y «Marcar pendiente» agrega una reversión sin borrar el movimiento original. Los totales del
-   día suman seña + saldo cobrado, y la caja muestra el neto con devoluciones.
-5. Sin token cargado se mantiene el flujo manual: el turno se reserva y el cliente ve el
-   alias/CVU o el link de Mercado Pago para coordinar el pago.
+Cómo opera esta versión:
 
-La preferencia incluye la `notification_url` pública del complejo. Por eso el sitio debe estar
-expuesto con **HTTPS** (Tailscale Funnel o un dominio propio); Mercado Pago no puede llamar a
-`localhost`. El webhook sólo se usa como aviso: siempre se consulta el pago con el token del
-complejo y se valida la referencia y el monto de la seña. Los medios de pago en efectivo
-(Rapipago/Pago Fácil) y cajero se excluyen porque la retención es corta.
+- La reserva pública se confirma en modo manual, sin retención por pago online.
+- La confirmación informa que el pago online no está disponible y permite
+  coordinar la seña con el complejo. El alias/CVU puede mostrarse como dato de
+  transferencia manual; el link de pago se oculta.
+- No se exige token ni secreto de Mercado Pago. Los complejos sin credenciales
+  operan igual y el panel registra seña, saldo, devoluciones y reversiones con
+  los mismos controles de caja e idempotencia.
+- Si llega una vuelta de checkout o un webhook, no se consulta la API ni se
+  crean movimientos. El webhook responde `200` con
+  `ignored=online_payments_disabled` para evitar reintentos.
+- Los modelos, campos cifrados, servicios y migraciones de Mercado Pago se
+  conservan. No se eliminó nada de la integración.
 
-Variables opcionales en `.env`: `BOOKING_DEPOSIT_PERCENT=30`, `BOOKING_HOLD_MINUTES=15` y
-`MERCADO_PAGO_TIMEOUT=15`.
+### Reactivación segura (segunda etapa)
+
+1. Recuperar y unir la migración `0020` faltante; ensayar el grafo completo.
+2. Cerrar backup programado, copia externa y simulacro de restauración.
+3. Configurar token y secreto de webhook por complejo con credenciales `TEST-`.
+4. Probar checkout aprobado, pendiente, rechazado, devolución, contracargo y
+   reintento de webhook, además de la conciliación de caja.
+5. Recién entonces retirar el forzado de `prod`, habilitar el interruptor en un
+   release controlado y mantener `MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET=true`.
+6. Verificar que un complejo con token y sin secreto siga bloqueado en modo
+   fail-closed.
+
+La integración técnica conserva estas reglas para cuando se reactive: la
+preferencia incluye la `notification_url` pública del complejo; el webhook sólo
+se usa como aviso y siempre consulta el pago contra la API con el token del
+complejo; valida referencia, identificador, moneda y monto de la seña. Acepta
+`payment`, `topic_merchant_order_wh` y `topic_chargebacks_wh`; un contracargo no
+se contabiliza solo, queda marcado para revisión manual y la auditoría de caja lo
+reporta. Los medios de pago en efectivo (Rapipago/Pago Fácil) y cajero se
+excluyen porque la retención es corta.
+
+Variables opcionales en `.env`: `MERCADO_PAGO_ONLINE_PAYMENTS_ENABLED=false`,
+`BOOKING_DEPOSIT_PERCENT=30`, `BOOKING_HOLD_MINUTES=15`,
+`MERCADO_PAGO_TIMEOUT=15`, `MERCADO_PAGO_CURRENCY=ARS` y
+`MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET=true`. En esta versión sólo se usan las
+variables de seña y retención para mostrar importes; no hay checkout.
 
 ## Caja y contabilidad de turnos
 
@@ -255,17 +292,24 @@ del turno. Cada seña, saldo, pago total, devolución, contracargo o reversión 
 fecha, medio de pago, importe y usuario que lo registró. Los movimientos no se editan: una
 corrección agrega una reversión vinculada al movimiento original.
 
-- **Medios de pago:** efectivo, transferencia, tarjeta, Mercado Pago u otro. Los cobros online se
-  registran automáticamente como Mercado Pago; en los cobros manuales el medio se elige en la
-  agenda.
+- **Medios de pago:** efectivo, transferencia, tarjeta, Mercado Pago u otro. En esta versión todos
+  los cobros se registran manualmente desde la agenda; los pagos online se registrarán
+  automáticamente cuando se reactive la integración.
 - **Cierres diarios:** guardan una foto de los totales y del usuario que cerró. El cierre no
   bloquea el día; si después aparece un movimiento con esa fecha, el reporte actual muestra el
   total real y el cierre queda como constancia.
 - **Devoluciones manuales:** se registran por código de turno, monto, medio y nota. El sistema
   valida que no se devuelva más de lo cobrado. No cancela el turno ni reintegra dinero
-  automáticamente: el reintegro real se hace en Mercado Pago o en el club.
-- **Webhook de Mercado Pago:** un pago reembolsado o un contracargo genera el egreso
-  correspondiente. Los webhooks repetidos no duplican movimientos por el ID externo.
+  automáticamente: el reintegro real se hace en el club. La devolución manual es idempotente con
+  el token del formulario.
+- **Webhook de Mercado Pago (diferido):** en la segunda etapa, un pago reembolsado o un
+  contracargo informado por el pago generará el egreso correspondiente. Los webhooks repetidos no
+  duplicarán movimientos por el ID externo y un contracargo sólo marcará el turno para revisión
+  manual. En esta versión el webhook está deshabilitado en el servidor y no toca la caja.
+- **Auditoría de conciliación:** `python manage.py audit_cash --json` informa, sin modificar
+  nada, banderas legadas incoherentes, diferencias entre el libro y el estado del turno,
+  movimientos huérfanos y contracargos sin conciliar. Usar `--complex <slug>` para acotar y
+  `--strict` para obtener código de salida 1 cuando haya hallazgos.
 - **Reportes:** filtros por complejo, rango de fechas y medio de pago; totales de cobrado,
   egresos, neto y saldo pendiente en club; exportación CSV compatible con planillas.
 - **Historial previo:** la migración `0019_backfill_court_payments` crea movimientos para los
@@ -422,3 +466,9 @@ propios (migración `0007_tournament_manual_bracket`), `padel_backup_20261015_23
 (todos verificados con sha256). Para el traspaso al LXC se generaron
 `padel_backup_20261016_002145_handoff_lxc.sql` y, con el estado final antes de restaurar,
 `padel_backup_20261016_003339_handoff_lxc.sql` (este último es el que quedó cargado en el LXC).
+
+El procedimiento de copia y **restauración verificada en una base nueva** está en
+[`docs/backup-restore.md`](docs/backup-restore.md). Incluye el comando `pg_dump -Fc`, la
+comprobación del archivo con `pg_restore -l`, la restauración aislada y las consultas de
+integridad. No hay una tarea programada de backup ni copia externa verificada en este
+repositorio: definirlas antes del piloto.

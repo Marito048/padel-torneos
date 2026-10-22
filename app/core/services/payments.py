@@ -58,8 +58,10 @@ def _request_json(url: str, access_token: str, *, payload=None, timeout=None):
             body = response.read().decode("utf-8")
             return json.loads(body) if body else {}
     except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:800]
-        logger.warning("Mercado Pago respondió %s: %s", exc.code, detail)
+        # No se registra el cuerpo de la respuesta: puede contener datos del
+        # pagador. El código HTTP alcanza para diagnosticar y reintentar.
+        exc.read()
+        logger.warning("Mercado Pago respondió %s", exc.code)
         raise MercadoPagoError(
             f"Mercado Pago respondió {exc.code}", status_code=exc.code
         ) from exc
@@ -83,4 +85,30 @@ def fetch_payment(access_token: str, payment_id: str) -> dict:
     if not str(payment_id or "").strip():
         raise MercadoPagoError("Falta el ID de pago.")
     url = f"{settings.MERCADO_PAGO_API_BASE.rstrip('/')}/v1/payments/{quote(str(payment_id), safe='')}"
+    return _request_json(url, access_token)
+
+
+def fetch_merchant_order(access_token: str, order_id: str) -> dict:
+    """Consulta una orden comercial (notificación ``merchant_order``)."""
+    if not access_token:
+        raise MercadoPagoError("El complejo no tiene configurado Mercado Pago.")
+    if not str(order_id or "").strip():
+        raise MercadoPagoError("Falta el ID de la orden.")
+    url = (
+        f"{settings.MERCADO_PAGO_API_BASE.rstrip('/')}/merchant_orders/"
+        f"{quote(str(order_id), safe='')}"
+    )
+    return _request_json(url, access_token)
+
+
+def fetch_chargeback(access_token: str, chargeback_id: str) -> dict:
+    """Consulta un contracargo por ID para asociarlo a su pago."""
+    if not access_token:
+        raise MercadoPagoError("El complejo no tiene configurado Mercado Pago.")
+    if not str(chargeback_id or "").strip():
+        raise MercadoPagoError("Falta el ID del contracargo.")
+    url = (
+        f"{settings.MERCADO_PAGO_API_BASE.rstrip('/')}/v1/chargebacks/"
+        f"{quote(str(chargeback_id), safe='')}"
+    )
     return _request_json(url, access_token)

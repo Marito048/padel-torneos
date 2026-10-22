@@ -5,7 +5,13 @@
 {% block content %}
 <section class="panel-section">
   <h1>Precio y avisos</h1>
-  <p class="muted">Precio del turno, cobro online de la seña con Mercado Pago y el WhatsApp que recibe el aviso de cada reserva.</p>
+  <p class="muted">Precio del turno, cobros manuales y el WhatsApp que recibe el aviso de cada reserva.</p>
+  {% if not online_payments_available %}
+    <p class="alert alert--info">
+      El pago online está deshabilitado en esta versión. Las reservas se confirman en modo manual
+      y la seña se registra desde la agenda. Los datos de Mercado Pago se conservan para la segunda etapa.
+    </p>
+  {% endif %}
   <div class="padel-actions">
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Volver a la agenda</a>
     <a class="btn btn--secondary btn--sm" href="{% url 'panel_turnos_caja' %}{% if selected_complex %}?complejo={{ selected_complex.slug }}{% endif %}">Caja y contabilidad</a>
@@ -39,14 +45,23 @@
         </label>
         <p class="help">Dejalo en 0 si los turnos no tienen precio. El precio se muestra en la página pública al reservar.</p>
 
-        <h3>Cobro online de la seña</h3>
+        <h3>Cobro online de la seña{% if not online_payments_available %} (deshabilitado){% endif %}</h3>
         <p class="help">
-          {% if selected_complex.has_mp_token %}
+          {% if not online_payments_available %}
+            <span class="status-pill status-pill--pending">Deshabilitado</span>
+            Esta versión no crea checkouts ni procesa pagos online. Los campos de Mercado Pago
+            se conservan para la segunda etapa y no son necesarios para operar manualmente.
+          {% elif selected_complex.has_mp_token %}
             <span class="status-pill status-pill--done">Token cargado</span>
-            El cobro online quedó configurado. El campo de abajo siempre aparece vacío, incluso con el
-            token guardado: por seguridad no se muestran el token ni puntos. Si no escribís nada, se conserva.
-            Si Mercado Pago muestra «cuenta de prueba» al pagar, el token pertenece a una cuenta de
-            prueba y no mueve dinero real.
+            {% if selected_complex.online_payments_enabled %}
+              El cobro online quedó configurado. El campo de abajo siempre aparece vacío, incluso con el
+              token guardado: por seguridad no se muestran el token ni puntos. Si no escribís nada, se conserva.
+              Si Mercado Pago muestra «cuenta de prueba» al pagar, el token pertenece a una cuenta de
+              prueba y no mueve dinero real.
+            {% else %}
+              Falta el secreto de firma del webhook: el cobro online está bloqueado y las reservas
+              públicas siguen el flujo manual. Cargalo abajo para habilitarlo.
+            {% endif %}
           {% else %}
             <span class="status-pill status-pill--pending">Sin token</span>
             El cobro online está inactivo; la reserva pública sigue siendo manual. Pegá el token para activarlo.
@@ -62,11 +77,34 @@
             <span>Quitar el token y volver al cobro manual</span>
           </label>
         {% endif %}
+        <label>Secreto de firma del webhook de Mercado Pago (obligatorio para cobrar online)
+          <input type="password" name="mp_webhook_secret" maxlength="255" autocomplete="new-password"
+                 placeholder="{% if selected_complex.has_mp_webhook_secret %}Dejalo vacío para conservar el secreto{% else %}Secreto de Webhooks en Tus integraciones{% endif %}">
+        </label>
+        {% if selected_complex.has_mp_webhook_secret %}
+          <label class="checkbox-row">
+            <input type="checkbox" name="mp_clear_webhook_secret">
+            <span>Quitar el secreto de firma del webhook</span>
+          </label>
+        {% endif %}
         <p class="help">
-          Con el token cargado, la reserva pública pide una seña del {{ deposit_percent }}% y se confirma
-          automáticamente cuando Mercado Pago aprueba el pago. El saldo se paga en el club.
-          Sin token, el turno se reserva y se cobra como antes (alias, link o en el club).
-          El token se guarda cifrado y no se vuelve a mostrar.
+          {% if not online_payments_available %}
+            El interruptor de pagos online está apagado. Podés guardar el precio y los datos de
+            contacto; el cobro de la seña se registra manualmente desde la agenda y la caja.
+            El link de pago no se muestra en la página pública mientras la integración esté deshabilitada.
+          {% else %}
+            Con el token cargado, la reserva pública pide una seña del {{ deposit_percent }}% y se confirma
+            automáticamente cuando Mercado Pago aprueba el pago. El saldo se paga en el club.
+            Sin token, el turno se reserva y se cobra como antes (alias, link o en el club).
+            El token y el secreto se guardan cifrados y no se vuelven a mostrar.
+            {% if mercadopago_requires_webhook_secret %}
+              Con el token cargado, el secreto es obligatorio: si falta, el checkout queda
+              bloqueado y el webhook rechaza las notificaciones en vez de aceptar pagos sin
+              verificar su origen.
+            {% else %}
+              Si cargás el secreto, el webhook exige la firma oficial de Mercado Pago.
+            {% endif %}
+          {% endif %}
         </p>
         <p class="help">
           Se obtiene en <a href="https://www.mercadopago.com.ar/developers/panel/app" target="_blank" rel="noopener">Mercado Pago Developers</a>
@@ -74,7 +112,7 @@
           o <strong>TEST-</strong> para probar. Si empieza con <strong>https://</strong> es un link de pago, no un token.
         </p>
 
-        <h3>Datos de cobro manual (respaldo)</h3>
+        <h3>Datos de cobro manual (alias/CVU)</h3>
         <label>Alias o CVU de Mercado Pago
           <input type="text" name="mp_alias" maxlength="80" value="{{ selected_complex.mp_alias }}" placeholder="Ej: padel.complejo.mp">
         </label>
@@ -84,7 +122,11 @@
         <label>Link de pago (opcional)
           <input type="url" name="mp_link" maxlength="300" value="{{ selected_complex.mp_link }}" placeholder="https://mpago.la/...">
         </label>
-        <p class="help">El cliente ve estos datos al confirmar el turno y puede pagar desde ahí. Después el complejo marca el turno como abonado desde la agenda.</p>
+        <p class="help">
+          El alias/CVU se muestra al cliente como dato de transferencia manual.
+          {% if online_payments_available %}El link de pago también se muestra.{% else %}El link de pago no se muestra mientras la integración online esté deshabilitada.{% endif %}
+          Después el complejo marca el turno como abonado desde la agenda.
+        </p>
 
         <h3>Avisos por WhatsApp</h3>
         <label>WhatsApp del complejo
@@ -108,11 +150,17 @@
       <h2>Cómo queda para el cliente</h2>
       <ul class="pause-list">
         <li><span>Al reservar ve el precio, la seña del {{ deposit_percent }}% y el saldo que se paga en el club.</span></li>
-        <li><span>Con Mercado Pago configurado, el horario queda retenido unos minutos y se confirma solo cuando se acredita la seña.</span></li>
-        {% if selected_complex.has_mp_token %}
-          <li><span>Si no paga la seña a tiempo, el horario se libera automáticamente.</span></li>
+        {% if not online_payments_available %}
+          <li><span>El pago online está deshabilitado: el cliente reserva y coordina la seña con el complejo; el cobro se registra desde la agenda.</span></li>
         {% else %}
-          <li><span>Sin token, el cliente reserva y ve el alias o el link de Mercado Pago para coordinar el pago.</span></li>
+          <li><span>Con Mercado Pago configurado, el horario queda retenido unos minutos y se confirma solo cuando se acredita la seña.</span></li>
+          {% if selected_complex.online_payments_enabled %}
+            <li><span>Si no paga la seña a tiempo, el horario se libera automáticamente.</span></li>
+          {% elif selected_complex.has_mp_token %}
+            <li><span>El token está cargado, pero falta el secreto del webhook: hasta completarlo, el cliente reserva y paga de forma manual.</span></li>
+          {% else %}
+            <li><span>Sin token, el cliente reserva y ve el alias o el link de Mercado Pago para coordinar el pago.</span></li>
+          {% endif %}
         {% endif %}
         <li><span>En la agenda, cada reserva tiene el botón «Avisar» que abre WhatsApp con el mensaje de confirmación ya escrito.</span></li>
         <li><span>En la agenda, el botón de cobro registra primero la seña y después el saldo del club; los totales del día suman lo cobrado.</span></li>

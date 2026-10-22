@@ -24,6 +24,21 @@ if not SECRET_KEY:
 DEBUG = env("DEBUG", default=False)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+# Proxies de confianza para leer X-Forwarded-For. Vacío = no confiar en el
+# header (Funnel L4 no propaga la IP del visitante).
+TRUSTED_PROXY_IPS = env.list("TRUSTED_PROXY_IPS", default=[])
+# Cuotas anti-abuso de reservas públicas, respaldadas en la base (no en caché).
+PUBLIC_RESERVATION_MAX_ACTIVE = env.int("PUBLIC_RESERVATION_MAX_ACTIVE", default=3)
+PUBLIC_RESERVATION_MAX_PER_HOUR = env.int("PUBLIC_RESERVATION_MAX_PER_HOUR", default=10)
+# Límite por sesión de la solicitud pública de cuenta. No es una protección
+# por IP real bajo Funnel; se documenta que rotar cookies lo evade.
+SIGNUP_REQUEST_MAX_PER_WINDOW = env.int("SIGNUP_REQUEST_MAX_PER_WINDOW", default=10)
+SIGNUP_REQUEST_WINDOW_SECONDS = env.int("SIGNUP_REQUEST_WINDOW_SECONDS", default=900)
+# Límite por sesión de consultas/acciones con código de turno. El código es
+# una credencial bearer de 8 caracteres; esto frena bucles y fuerza bruta
+# distribuida, aunque rotar cookies lo evade. No es una defensa por IP real.
+PUBLIC_CODE_MAX_PER_WINDOW = env.int("PUBLIC_CODE_MAX_PER_WINDOW", default=60)
+PUBLIC_CODE_WINDOW_SECONDS = env.int("PUBLIC_CODE_WINDOW_SECONDS", default=300)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -198,6 +213,23 @@ BOOKING_DEPOSIT_PERCENT = env.int("BOOKING_DEPOSIT_PERCENT", default=30)
 BOOKING_HOLD_MINUTES = env.int("BOOKING_HOLD_MINUTES", default=15)
 MERCADO_PAGO_API_BASE = env("MERCADO_PAGO_API_BASE", default="https://api.mercadopago.com")
 MERCADO_PAGO_TIMEOUT = env.int("MERCADO_PAGO_TIMEOUT", default=15)
+# Interruptor explícito de la integración de pagos online. En la primera
+# versión queda deshabilitado: las reservas usan el flujo manual y los
+# endpoints de checkout/webhook no procesan pagos. Los modelos, credenciales
+# cifradas y servicios se conservan para la segunda etapa.
+MERCADO_PAGO_ONLINE_PAYMENTS_ENABLED = env.bool(
+    "MERCADO_PAGO_ONLINE_PAYMENTS_ENABLED", default=False
+)
+# Moneda del checkout y de los pagos aceptados. Un pago en otra moneda se
+# marca para revisión y no se suma a la caja en pesos.
+MERCADO_PAGO_CURRENCY = env("MERCADO_PAGO_CURRENCY", default="ARS")
+# Si un complejo tiene token de Mercado Pago, el cobro online también exige
+# el secreto de firma del webhook. Se bloquean el checkout y las notificaciones
+# sin firma en vez de aceptar pagos que no se pueden verificar. Los complejos
+# sin token siguen usando el flujo manual normalmente.
+MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET = env.bool(
+    "MERCADO_PAGO_REQUIRE_WEBHOOK_SECRET", default=True
+)
 
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]

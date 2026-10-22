@@ -72,7 +72,7 @@ class ComplexAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug", "city")
     prepopulated_fields = {"slug": ("name",)}
     filter_horizontal = ("users",)
-    exclude = ("mp_access_token_encrypted",)
+    exclude = ("mp_access_token_encrypted", "mp_webhook_secret_encrypted")
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -345,7 +345,7 @@ class MatchAdmin(ZoneScopedAdmin):
     autocomplete_fields = ("team1", "team2", "winner", "court", "zone")
     date_hierarchy = "scheduled_at"
     search_fields = ("score",)
-    readonly_fields = ("recorded_by", "recorded_at")
+    readonly_fields = ("recorded_by", "recorded_at", "version")
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -384,6 +384,7 @@ class MatchAdmin(ZoneScopedAdmin):
                 court=obj.court,
                 played_at=obj.played_at,
                 actor=request.user,
+                expected_version=obj.version,
             )
         else:
             obj.save()

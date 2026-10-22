@@ -51,6 +51,7 @@
         {% if match.team1_id and match.team2_id %}
           <form method="post" action="{% url 'panel_result_register' tournament.slug match.pk %}" class="result-form">
             {% csrf_token %}
+            <input type="hidden" name="version" value="{{ match.version }}">
             <label>Marcador
               <input type="text" name="score" placeholder="6-4 6-3" aria-label="Marcador del partido">
             </label>
@@ -109,6 +110,7 @@
         <summary>Corregir resultado</summary>
         <form method="post" action="{% url 'panel_result_register' tournament.slug match.pk %}" class="result-form">
           {% csrf_token %}
+          <input type="hidden" name="version" value="{{ match.version }}">
           <label>Nuevo marcador
             <input type="text" name="score" value="{{ match.score }}" placeholder="6-4 6-3">
           </label>

@@ -173,6 +173,7 @@
         <input type="hidden" name="complejo" value="{{ selected_complex.slug }}">
         <input type="hidden" name="desde" value="{{ start|date:'Y-m-d' }}">
         <input type="hidden" name="hasta" value="{{ end|date:'Y-m-d' }}">
+        <input type="hidden" name="refund_token" value="{{ refund_token }}">
         <label>Código del turno
           <input type="text" name="codigo" maxlength="12" value="{{ refund_code }}" placeholder="Ej: VJUMCMUN" required>
         </label>

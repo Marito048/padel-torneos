@@ -31,7 +31,9 @@ CALLMEBOT_URL = "https://api.callmebot.com/whatsapp.php"
 def notify_new_signup_request(request_row, panel_url: str) -> None:
     """Avisa que entró una solicitud de registro (email + WhatsApp)."""
     logger.info(
-        "Nueva solicitud de registro: %s (%s)", request_row.email, request_row.complex_name
+        "Nueva solicitud de registro #%s (%s)",
+        request_row.pk,
+        request_row.complex_name,
     )
     lines = [f"Email: {request_row.email}"]
     full_name = f"{request_row.first_name} {request_row.last_name}".strip()
@@ -54,7 +56,7 @@ def notify_new_signup_request(request_row, panel_url: str) -> None:
 
 def notify_tournament_team_signup(tournament, team, phones: list[str], panel_url: str) -> None:
     """Avisa que una pareja se autoinscribió (queda pendiente de confirmar)."""
-    logger.info("Autoinscripción: %s en %s", team, tournament.name)
+    logger.info("Autoinscripción: dupla #%s en %s", team.pk, tournament.name)
     lines = []
     if tournament.complex_id:
         lines.append(f"Complejo: {tournament.complex.name}")
@@ -105,8 +107,9 @@ def _send_email(subject: str, text: str, extra_recipients: list[str] | None = No
             recipients,
             fail_silently=False,
         )
-    except Exception:
-        logger.warning("No se pudo enviar el aviso por email", exc_info=True)
+    except Exception as exc:
+        # Sin exc_info: el mensaje puede incluir direcciones o contenido.
+        logger.warning("No se pudo enviar el aviso por email (%s)", type(exc).__name__)
 
 
 def _send_whatsapp(text: str, *, phone: str = "", apikey: str = "") -> None:
@@ -118,8 +121,12 @@ def _send_whatsapp(text: str, *, phone: str = "", apikey: str = "") -> None:
     try:
         with urlopen(f"{CALLMEBOT_URL}?{params}", timeout=5) as response:
             response.read()
-    except Exception:
-        logger.warning("No se pudo enviar el aviso por WhatsApp", exc_info=True)
+    except Exception as exc:
+        # La URL de CallMeBot contiene la API key y el texto con datos del
+        # cliente. No se registra la excepción completa para no filtrarlos.
+        logger.warning(
+            "No se pudo enviar el aviso por WhatsApp (%s)", type(exc).__name__
+        )
 
 
 def notify_court_booking(booking) -> None:
@@ -130,12 +137,12 @@ def notify_court_booking(booking) -> None:
     interrumpen la reserva: sólo quedan anotados en el log.
     """
     logger.info(
-        "Nueva reserva de cancha: %s %s %s-%s (%s)",
+        "Nueva reserva de cancha: %s %s %s-%s (reserva #%s)",
         booking.complex.name,
         booking.date,
         booking.start_time,
         booking.end_time,
-        booking.customer_name or "sin nombre",
+        booking.pk,
     )
     lines = [
         f"Cancha: {booking.court.name}",

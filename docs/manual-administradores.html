@@ -455,6 +455,15 @@
     </div>
   </header>
 
+  <section class="chapter">
+    <div class="callout callout--info">
+      <strong>Primera versión sin pagos online.</strong> La integración de Mercado Pago está
+      implementada pero deshabilitada. Las reservas se confirman en modo manual y la seña y el
+      saldo se registran desde la agenda y la caja. No hace falta cargar token ni secreto de
+      Mercado Pago para operar. La sección 06 queda como referencia para la segunda etapa.
+    </div>
+  </section>
+
   <section class="toc">
     <span class="chapter-kicker">Contenido</span>
     <h2>Cómo está organizado</h2>
@@ -465,7 +474,7 @@
       <a href="#configuracion"><span>03</span> Configuración inicial del complejo</a>
       <a href="#agenda"><span>04</span> Agenda de turnos</a>
       <a href="#cobros"><span>05</span> Seña, saldo y caja</a>
-      <a href="#mercado-pago"><span>06</span> Mercado Pago: prueba y producción</a>
+      <a href="#mercado-pago"><span>06</span> Mercado Pago: integración diferida</a>
       <a href="#torneos"><span>07</span> Torneos: creación y estados</a>
       <a href="#parejas"><span>08</span> Parejas y jugadores</a>
       <a href="#autoinscripcion"><span>09</span> Autoinscripción de parejas</a>
@@ -553,7 +562,7 @@
       <li><strong>Crear el complejo.</strong> Andá a <span class="ui">Configuración general</span> → <span class="ui">Mis complejos</span> → <span class="ui">Agregar complejo</span>. Cargá nombre, ciudad, dirección, teléfono y email.</li>
       <li><strong>Cargar las canchas.</strong> En el complejo, entrá a <span class="ui">Canchas</span> → <span class="ui">Agregar cancha</span>. Indicá nombre y superficie (césped artificial, cristal o muro). Dejá activas solo las canchas que se pueden reservar.</li>
       <li><strong>Definir horarios.</strong> En <span class="ui">Turnos</span> → <span class="ui">Horarios y feriados</span>, configurá día hábil, sábado y domingo.</li>
-      <li><strong>Definir precio y avisos.</strong> En <span class="ui">Turnos</span> → <span class="ui">Precio y avisos</span>, cargá el precio, el cobro online y el WhatsApp del complejo.</li>
+      <li><strong>Definir precio y avisos.</strong> En <span class="ui">Turnos</span> → <span class="ui">Precio y avisos</span>, cargá el precio, los datos de cobro manual y el WhatsApp del complejo.</li>
       <li><strong>Dar acceso al personal.</strong> Desde <span class="ui">Configuración general</span> → <span class="ui">Agregar usuario</span>, creá una cuenta para cada persona y asignale el complejo.</li>
     </ol>
 
@@ -580,16 +589,16 @@
     <p>En <span class="ui">Precio y avisos</span> se concentra la parte comercial:</p>
     <ul>
       <li><strong>Precio del turno:</strong> se muestra en la página pública y se guarda en cada reserva al momento de crearla. Si después cambiás el precio, las reservas anteriores conservan el precio viejo.</li>
-      <li><strong>Cobro online de la seña:</strong> se activa cargando un access token de Mercado Pago. Sin token, el turno se reserva y se cobra de forma manual.</li>
-      <li><strong>Datos de cobro manual:</strong> alias o CVU, titular y link de pago. El cliente los ve al confirmar el turno.</li>
+      <li><strong>Pago online (diferido):</strong> esta versión no crea checkouts ni procesa webhooks. Los campos de Mercado Pago se conservan para la segunda etapa y no son necesarios para operar.</li>
+      <li><strong>Datos de cobro manual:</strong> alias o CVU y titular. El cliente puede verlos al confirmar el turno para coordinar una transferencia. El link de pago se muestra recién cuando se reactive la integración online.</li>
       <li><strong>WhatsApp del complejo:</strong> número con código de país, solo números. Ejemplo: <span class="ui">5492215551234</span>.</li>
       <li><strong>CallMeBot API key:</strong> opcional; permite que el complejo reciba un aviso automático por cada reserva nueva.</li>
     </ul>
     <div class="callout callout--warning">
-      <strong>Precio en cero:</strong> si el precio es 0, no se calcula seña y no se activa el cobro online. Dejalo en 0 solo si el complejo no cobra los turnos desde el sistema.
+      <strong>Precio en cero:</strong> si el precio es 0, no se calcula seña. Dejalo en 0 solo si el complejo no cobra los turnos desde el sistema; el cobro manual sigue disponible desde la agenda.
     </div>
     <div class="callout callout--info">
-      <strong>Antes de abrir:</strong> verificá que haya al menos una cancha activa, un horario abierto para el día, un precio correcto y, si vas a cobrar online, un token cargado.
+      <strong>Antes de abrir:</strong> verificá que haya al menos una cancha activa, un horario abierto para el día y un precio correcto. En esta versión no se requiere token ni secreto de Mercado Pago.
     </div>
   </section>
 
@@ -604,7 +613,7 @@
       <li>Ve la grilla de horarios libres por cancha y elige uno.</li>
       <li>Deja nombre y WhatsApp. No necesita usuario ni contraseña.</li>
       <li>Recibe un código para consultar o cancelar el turno.</li>
-      <li>Si el cobro online está activo, paga la seña; si no, ve los datos de cobro manual.</li>
+      <li>En esta versión no paga online: el turno queda reservado con la seña pendiente y el cliente coordina el cobro con el complejo. Si cargaste alias/CVU, lo ve como dato de transferencia manual.</li>
     </ol>
 
     <h3>Leer la agenda</h3>
@@ -658,21 +667,21 @@
 
     <div class="grid-2">
       <div class="card">
-        <h3>Con cobro online activo</h3>
+        <h3>Esta versión: cobro manual</h3>
         <ul>
-          <li>El cliente paga una <strong>seña del 30%</strong> del precio (redondeada a centavos).</li>
-          <li>El horario queda <strong>retenido 15 minutos</strong>. Si no se acredita el pago, se libera solo.</li>
-          <li>Cuando Mercado Pago aprueba, el turno pasa a <strong>Reservado</strong> y la seña queda abonada.</li>
-          <li>El <strong>saldo restante (el 70%) se paga en el club</strong> y se registra desde la agenda.</li>
+          <li>El turno se reserva al instante, pero la seña queda <strong>pendiente</strong>.</li>
+          <li>El cliente ve el alias/CVU si lo cargaste; el link de pago online no se muestra.</li>
+          <li>El personal marca la seña y después el saldo cuando los cobra.</li>
+          <li>Si el cliente no paga, el horario sigue reservado hasta que lo canceles.</li>
         </ul>
       </div>
       <div class="card">
-        <h3>Sin cobro online</h3>
+        <h3>Segunda etapa: cobro online</h3>
         <ul>
-          <li>El turno se reserva al instante, pero la seña queda <strong>pendiente</strong>.</li>
-          <li>El cliente ve el alias/CVU o el link de pago manual.</li>
-          <li>El personal marca la seña y después el saldo cuando los cobra.</li>
-          <li>Si el cliente no paga, el horario sigue reservado hasta que lo canceles.</li>
+          <li>Queda documentado como referencia, pero <strong>no está activo</strong>.</li>
+          <li>Cuando se reactive, el cliente pagará una seña del 30% y el horario quedará retenido 15 minutos.</li>
+          <li>Mercado Pago confirmará el pago y el turno pasará a <strong>Reservado</strong>.</li>
+          <li>El <strong>saldo restante (el 70%) se paga en el club</strong> y se registra desde la agenda.</li>
         </ul>
       </div>
     </div>
@@ -683,7 +692,7 @@
         <tr><th>Botón</th><th>Cuándo aparece</th><th>Qué registra</th></tr>
       </thead>
       <tbody>
-        <tr><td><span class="ui">Confirmar seña</span></td><td>Turno con seña pendiente de pago online.</td><td>Confirma el turno y marca la seña como abonada. Usalo solo si el pago está acreditado.</td></tr>
+        <tr><td><span class="ui">Confirmar seña</span></td><td>Turno con seña pendiente de pago online (sólo segunda etapa).</td><td>Confirma el turno y marca la seña como abonada. Usalo solo si el pago está acreditado.</td></tr>
         <tr><td><span class="ui">Marcar seña abonada</span></td><td>Turno reservado con seña pendiente, normalmente cobro manual.</td><td>Marca la seña como cobrada. Después queda disponible el saldo.</td></tr>
         <tr><td><span class="ui">Cobrar saldo</span></td><td>Seña ya abonada y saldo pendiente.</td><td>Registra el saldo cobrado en el club.</td></tr>
         <tr><td><span class="ui">Marcar saldo pendiente</span></td><td>Saldo ya marcado como cobrado.</td><td>Revierte el saldo si se cargó por error.</td></tr>
@@ -699,8 +708,8 @@
     <h3>Caja y contabilidad</h3>
     <p>En <span class="ui">Turnos</span> → <span class="ui">Caja y contabilidad</span> está el libro de todos los movimientos de dinero del complejo. No reemplaza la agenda: la agenda muestra el estado del turno y la caja muestra cómo se movió el dinero.</p>
     <ul>
-      <li><strong>Medio de pago:</strong> al marcar una seña, un saldo o un turno manual, elegí <span class="ui">Efectivo</span>, <span class="ui">Transferencia</span>, <span class="ui">Tarjeta</span> u <span class="ui">Otro</span>. Los pagos aprobados por Mercado Pago se registran solos como <span class="ui">Mercado Pago</span>.</li>
-      <li><strong>Quién cobró:</strong> el sistema guarda el usuario del panel que marcó el cobro. En los pagos online figura <span class="ui">Mercado Pago</span> porque los confirma la plataforma.</li>
+      <li><strong>Medio de pago:</strong> al marcar una seña, un saldo o un turno manual, elegí <span class="ui">Efectivo</span>, <span class="ui">Transferencia</span>, <span class="ui">Tarjeta</span> u <span class="ui">Otro</span>. En esta versión todos los cobros se registran manualmente; Mercado Pago se usará cuando se reactive la integración.</li>
+      <li><strong>Quién cobró:</strong> el sistema guarda el usuario del panel que marcó el cobro. En la segunda etapa, los pagos online figurarán como <span class="ui">Mercado Pago</span> porque los confirma la plataforma.</li>
       <li><strong>Historial:</strong> los movimientos no se editan ni se borran. Si marcaste un pago por error y usás <span class="ui">Marcar pendiente</span>, se agrega una <strong>reversión</strong> y el cobro original queda visible. Eso permite auditar qué pasó.</li>
       <li><strong>Totales:</strong> la pantalla muestra lo cobrado, las devoluciones y reversiones, el neto en caja y el saldo que falta cobrar en el club para los turnos del período.</li>
     </ul>
@@ -715,13 +724,13 @@
 
     <h4>Registrar una devolución</h4>
     <ol class="steps">
-      <li>Hacé el reintegro real: en Mercado Pago si el pago fue online, o entregando el dinero si fue en efectivo o transferencia.</li>
+      <li>Hacé el reintegro real: en esta versión entregando el dinero si fue en efectivo o transferencia. Si en la segunda etapa el pago fue online, se gestiona en Mercado Pago.</li>
       <li>En <span class="ui">Caja y contabilidad</span>, buscá el bloque <strong>Registrar devolución</strong>.</li>
       <li>Ingresá el código del turno, el monto devuelto, el medio y una nota con el motivo. El sistema no te deja devolver más de lo que efectivamente cobraste.</li>
       <li>Revisá en <strong>Movimientos</strong> que aparezca como <strong>Devolución</strong>. El neto de caja baja automáticamente.</li>
     </ol>
     <div class="callout callout--warning">
-      <strong>Una devolución registrada no cancela el turno.</strong> Son dos acciones distintas: cancelá el turno en la agenda si corresponde y registrá la devolución en Caja para que el dinero quede auditado. Mercado Pago no reintegra automáticamente desde el panel: el reintegro online se hace en Mercado Pago.
+      <strong>Una devolución registrada no cancela el turno.</strong> Son dos acciones distintas: cancelá el turno en la agenda si corresponde y registrá la devolución en Caja para que el dinero quede auditado. En esta versión el reintegro es manual; cuando se reactive Mercado Pago, el reintegro online se hará en Mercado Pago y no desde el panel.
     </div>
 
     <h4>Cerrar la caja del día</h4>
@@ -731,36 +740,45 @@
     </div>
 
     <h3>Devoluciones y cancelaciones</h3>
-    <p>Si cancelás un turno con seña o saldo cobrado, el sistema conserva el registro y muestra una advertencia. La devolución se gestiona aparte: en Mercado Pago si fue online, o en el club si fue efectivo. Después registrala en <span class="ui">Caja y contabilidad</span> para que los totales queden bien. No hay un botón de reintegro automático.</p>
+    <p>Si cancelás un turno con seña o saldo cobrado, el sistema conserva el registro y muestra una advertencia. La devolución se gestiona aparte: en esta versión en el club, con el medio de pago original. Después registrala en <span class="ui">Caja y contabilidad</span> para que los totales queden bien. No hay un botón de reintegro automático. En la segunda etapa, si el pago fue online, el reintegro se hará en Mercado Pago.</p>
 
     <h3>Pagos que llegan tarde</h3>
     <p>Si un pago se aprueba después de que venció la retención, el horario puede haberse liberado. Si todavía está libre, el sistema puede restaurar el turno; si ya lo tomó otra persona o la reserva se canceló, el pago queda <strong>aprobado sin turno</strong>. En ese caso, revisá la agenda, coordiná con el cliente y gestioná la devolución o un nuevo horario. El pago igual queda registrado en Caja.</p>
   </section>
 
   <section class="chapter" id="mercado-pago">
-    <span class="chapter-kicker">06 · Cobro online</span>
-    <h2>Mercado Pago: prueba y producción</h2>
-    <p class="lead">El cobro online usa Checkout Pro. El complejo necesita su propia cuenta de Mercado Pago y un <strong>access token del vendedor</strong>. El dinero se acredita en esa cuenta.</p>
+    <span class="chapter-kicker">06 · Integración diferida</span>
+    <h2>Mercado Pago: integración diferida</h2>
+    <p class="lead">Esta versión no inicia ni procesa pagos online. La integración de Checkout Pro se conserva en el código para una segunda etapa, pero el servidor no crea preferencias, no procesa retornos ni webhooks y no modifica reservas ni caja por esos canales.</p>
+
+    <div class="callout callout--warning">
+      <strong>No cargues credenciales para intentar activar pagos en esta versión.</strong> El interruptor
+      <span class="ui">MERCADO_PAGO_ONLINE_PAYMENTS_ENABLED</span> vale <span class="ui">false</span> y en
+      producción está forzado a <span class="ui">false</span>. Los campos de token y secreto se guardan
+      para la segunda etapa, pero no habilitan el cobro. La operación actual es manual.
+    </div>
 
     <div class="callout callout--danger">
       <strong>No confundas vendedor con comprador.</strong> El panel guarda únicamente el token del <strong>vendedor</strong>, que es la cuenta que cobra. El <strong>comprador de prueba</strong> se usa solo para iniciar sesión en Mercado Pago y pagar. Nunca cargues el usuario o la contraseña del comprador en el panel.
     </div>
 
-    <h3>Activar el cobro real</h3>
+    <h3>Reactivación en la segunda etapa</h3>
+    <p>Estos pasos no deben ejecutarse todavía. Requieren un release que retire el forzado de producción, cierre la migración faltante, tenga backup verificado y supere las pruebas E2E.</p>
     <ol class="steps">
       <li>Ingresá con la <strong>cuenta real del complejo</strong> en Mercado Pago Developers.</li>
       <li>Entrá a tu aplicación → <strong>Credenciales</strong> → copiá el <strong>Access token de producción</strong>. Empieza con <span class="ui">APP_USR-</span>.</li>
       <li>En el panel, andá a <span class="ui">Turnos</span> → <span class="ui">Precio y avisos</span>.</li>
       <li>Pegá el token en <strong>Access token de Mercado Pago</strong>. No pegues un link de pago: si empieza con <span class="ui">https://</span>, el sistema lo rechaza.</li>
-      <li>Guardá los ajustes. Debe aparecer <span class="ui">Token cargado</span>.</li>
-      <li>Hacé una prueba real de bajo valor y, si corresponde, devolvela desde Mercado Pago.</li>
+      <li>En Mercado Pago → <strong>Tus integraciones → Webhooks</strong>, copiá el <strong>secreto de firma</strong> y pegalo en <strong>Secreto de firma del webhook</strong>. Es obligatorio para cobrar online: si falta, el checkout y el webhook quedan bloqueados.</li>
+      <li>Guardá los ajustes. Con el interruptor habilitado debe aparecer <span class="ui">Token cargado</span> y el cobro online activo.</li>
+      <li>Hacé primero una prueba E2E con credenciales <span class="ui">TEST-</span> y recién después una prueba real de bajo valor.</li>
     </ol>
 
     <h3>El token no se muestra</h3>
-    <p>Por seguridad, el campo queda vacío aunque el token esté guardado. Si no escribís nada, se conserva. Si querés reemplazarlo, pegá uno nuevo. Si querés volver al cobro manual, marcá <span class="ui">Quitar el token y volver al cobro manual</span>.</p>
+    <p>Por seguridad, el campo queda vacío aunque el token esté guardado. Si no escribís nada, se conserva. Si querés reemplazarlo, pegá uno nuevo. Si querés quitarlo, marcá <span class="ui">Quitar el token</span>.</p>
     <p>El token se guarda cifrado. Si el sistema se reinstala o cambia su clave de seguridad, puede ser necesario volver a cargarlo.</p>
 
-    <h3>Probar sin cobrar dinero real</h3>
+    <h3>Probar sin cobrar dinero real (segunda etapa)</h3>
     <p>Usá un <strong>token de vendedor de prueba</strong> y un <strong>comprador de prueba</strong>. Los tokens de prueba también pueden empezar con <span class="ui">APP_USR-</span>; lo importante es que pertenezcan a una cuenta de prueba.</p>
     <ol class="steps">
       <li>En Mercado Pago Developers → tu aplicación → <strong>Cuentas de prueba</strong>, elegí <strong>Comprador</strong> y copiá usuario y contraseña.</li>
@@ -776,13 +794,13 @@
     </div>
 
     <div class="callout callout--warning">
-      <strong>El botón Pagar queda gris:</strong> generalmente estás logueado con la cuenta vendedora, estás usando una tarjeta real en un checkout de prueba o falta completar nombre, documento, cuotas o términos. Cerrá sesión, abrí una ventana incógnita y pagá con el comprador de prueba.
+      <strong>El botón Pagar queda gris:</strong> generalmente estás logueado con la cuenta vendedora, estás usando una tarjeta real en un checkout de prueba o falta completar nombre, documento, cuotas o términos. Cerrá sesión, abrí una ventana incógnita y pagá con el comprador de prueba. Esto sólo aplica cuando la integración esté reactivada.
     </div>
 
-    <h3>Sin token: cobro manual de respaldo</h3>
-    <p>Si el complejo no configuró Mercado Pago, la reserva pública sigue funcionando. El cliente ve el alias/CVU, el titular y el link de pago si los cargaste. Después el personal marca la seña y el saldo desde la agenda.</p>
+    <h3>Esta versión: cobro manual</h3>
+    <p>La reserva pública se confirma en modo manual. Si cargaste un alias/CVU, el cliente lo ve como dato para transferir; el link de pago online no se muestra. Después el personal marca la seña y el saldo desde la agenda. No se exige token ni secreto.</p>
     <div class="callout callout--info">
-      <strong>Link de pago:</strong> es un dato de respaldo para el cliente, no es el access token. No lo pegues en el campo del token.
+      <strong>Link de pago:</strong> es un dato de la segunda etapa, no es el access token. No lo pegues en el campo del token.
     </div>
   </section>
 
@@ -1026,7 +1044,7 @@
       <li><strong>CallMeBot API key:</strong> opcional. Se obtiene una vez desde el WhatsApp del complejo y permite el aviso automático.</li>
       <li><strong>Botón Avisar por WhatsApp:</strong> dentro del detalle del turno, abre WhatsApp con el mensaje de confirmación ya escrito para el cliente.</li>
       <li><strong>Confirmar por WhatsApp:</strong> con el número cargado, la confirmación del cliente también muestra este botón para que avise al complejo.</li>
-      <li><strong>Aviso automático:</strong> el complejo recibe un mensaje con los datos de la reserva nueva. En un pago online, se envía cuando Mercado Pago aprueba la seña.</li>
+      <li><strong>Aviso automático:</strong> el complejo recibe un mensaje con los datos de la reserva nueva. En esta versión se envía al confirmar la reserva manual; en la segunda etapa, un pago online se avisará cuando Mercado Pago apruebe la seña.</li>
     </ul>
     <div class="callout callout--info">
       <strong>Si WhatsApp falla, la reserva no se pierde.</strong> El aviso es un servicio externo. Si CallMeBot no responde, el turno igual queda registrado; revisá la agenda o contactá al cliente manualmente.
@@ -1055,8 +1073,8 @@
 
     <h3>Cobrar la seña y el saldo</h3>
     <ol>
-      <li>Verificá el pago en Mercado Pago o en el comprobante del cliente.</li>
-      <li>En la agenda, usá <span class="ui">Confirmar seña</span> o <span class="ui">Marcar seña abonada</span>.</li>
+      <li>Verificá el comprobante del cliente. En esta versión no hay pagos online; en la segunda etapa también se podrá verificar en Mercado Pago.</li>
+      <li>En la agenda, usá <span class="ui">Marcar seña abonada</span> para el cobro manual. <span class="ui">Confirmar seña</span> quedará para pagos online de la segunda etapa.</li>
       <li>Elegí el medio de pago cuando corresponda: efectivo, transferencia, tarjeta u otro.</li>
       <li>Cuando el cliente pague el resto en el club, usá <span class="ui">Cobrar saldo</span> y elegí el medio.</li>
       <li>Al terminar el día, revisá <span class="ui">Caja y contabilidad</span> y cerrá la caja.</li>
@@ -1069,7 +1087,7 @@
     <p>Creá un usuario, asignale el complejo y dejá activo <strong>Acceso al panel</strong>. No le des el usuario de otra persona. Cuando deje el club, suspendelo.</p>
 
     <h3>Cancelar un turno con pago</h3>
-    <p>Cancelá desde la agenda y coordiná la devolución. Si el pago fue online, gestioná el reintegro en Mercado Pago; si fue en efectivo, entregá el dinero. Después registrá la devolución en <span class="ui">Caja y contabilidad</span> para que quede auditada y el neto sea correcto.</p>
+    <p>Cancelá desde la agenda y coordiná la devolución. En esta versión el cobro es manual: entregá el dinero si fue en efectivo o transferencia. En la segunda etapa, si el pago fue online, el reintegro se gestionará en Mercado Pago. Después registrá la devolución en <span class="ui">Caja y contabilidad</span> para que quede auditada y el neto sea correcto.</p>
 
     <h3>Corregir un resultado</h3>
     <p>Entrá a <strong>Resultados</strong> → <strong>Últimos resultados</strong> → <strong>Corregir resultado</strong>. Si el sistema lo bloquea, revisá los partidos dependientes de la llave y corregilos en orden.</p>
@@ -1078,6 +1096,7 @@
   <section class="chapter" id="problemas">
     <span class="chapter-kicker">16 · Ayuda rápida</span>
     <h2>Problemas frecuentes</h2>
+    <p class="muted">Los casos de Mercado Pago de la tabla aplican sólo cuando la integración online se reactive en la segunda etapa. En esta versión no hay checkout ni webhook activos.</p>
     <table>
       <thead>
         <tr><th>Síntoma</th><th>Causa probable</th><th>Qué hacer</th></tr>
